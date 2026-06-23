@@ -29,3 +29,11 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .actions button { padding: 8px 12px; font-size: .85rem; }
 @media (min-width: 720px) { .page-shell { padding-top: 48px; } .card { padding: 30px; } .grid-gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; } }
+.form-intro h2 { margin: 0 0 6px; font-size: 1.35rem; }
+.form-intro p { margin: 0; color: var(--muted); }
+.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; min-height: 50px; }
+.btn-secondary { background: #fff; color: var(--foreground); border: 1px solid rgba(183,121,99,.35); box-shadow: 0 12px 32px rgba(84,55,38,.08); }
+.hero-link { margin-top: 12px; width: min(100%, 320px); }
+.success { display: grid; gap: 10px; }
+.success p { margin: 0; }
+.empty-state { text-align: center; color: var(--muted); margin-top: 22px; }

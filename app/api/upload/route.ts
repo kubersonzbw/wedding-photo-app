@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       const photoId = crypto.randomUUID();
       const storagePath = `${event.id}/${guest.id}/${photoId}.jpg`;
       await uploadObject(storagePath, file);
-      uploaded.push(await insertPhoto({ id: photoId, event_id: event.id, guest_id: guest.id, storage_path: storagePath, original_filename: file.name, mime_type: "image/jpeg", size_bytes: file.size, status: "pending" }));
+      uploaded.push(await insertPhoto({ id: photoId, event_id: event.id, guest_id: guest.id, storage_path: storagePath, original_filename: file.name, mime_type: "image/jpeg", size_bytes: file.size, status: "approved" }));
     }
     return Response.json({ ok: true, count: uploaded.length });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Błąd uploadu." }, { status: 500 }); }
