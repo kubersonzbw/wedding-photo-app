@@ -55,7 +55,7 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
   }, [activeIndex, photos.length]);
 
   return <WeddingShell wide>
-    <WeddingHero eyebrow="ROBERT & NATALIA" subtitle="Galeria wspomnień" description="Zdjęcia dodane przez naszych gości" primaryHref={uploadHref} primaryLabel="Dodaj zdjęcia" />
+    <WeddingHero eyebrow="NATALIA & ROBERT" subtitle="Galeria wspomnień" description="Zdjęcia dodane przez naszych gości" primaryHref={uploadHref} primaryLabel="Dodaj zdjęcia" />
     {!initialCode && <section className="memory-card gallery-panel">
       <div className="gallery-panel-heading"><span>Otwórz ścianę wspomnień</span><Link className="btn btn-primary" href={uploadHref}>Dodaj zdjęcia</Link></div>
       <div className="gallery-controls code-only">
