@@ -1,0 +1,29 @@
+import { getEventBySlug, insertGuest, insertPhoto, uploadObject } from "@/lib/supabase/admin";
+import { verifySecret } from "@/lib/security/hash";
+import { checkRateLimit } from "@/lib/security/rate-limit";
+import { validatePhotoList } from "@/lib/photos/validation";
+
+export async function POST(request: Request) {
+  try {
+    const form = await request.formData();
+    const slug = String(form.get("slug") ?? "");
+    const accessCode = String(form.get("accessCode") ?? "");
+    const guestName = String(form.get("guestName") ?? "").trim();
+    const files = form.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
+    if (!slug || !accessCode || !guestName) return Response.json({ error: "Uzupełnij wymagane pola." }, { status: 400 });
+    const validation = validatePhotoList(files); if (validation) return Response.json({ error: validation }, { status: 400 });
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0] ?? "local";
+    if (!checkRateLimit(`upload:${ip}`, undefined, undefined, files.length).allowed) return Response.json({ error: "Limit 30 zdjęć / 10 minut został przekroczony." }, { status: 429 });
+    const event = await getEventBySlug(slug);
+    if (!event || !verifySecret(accessCode, event.access_code_hash)) return Response.json({ error: "Niepoprawny kod wydarzenia." }, { status: 401 });
+    const guest = await insertGuest(event.id, guestName);
+    const uploaded = [];
+    for (const file of files) {
+      const photoId = crypto.randomUUID();
+      const storagePath = `${event.id}/${guest.id}/${photoId}.jpg`;
+      await uploadObject(storagePath, file);
+      uploaded.push(await insertPhoto({ id: photoId, event_id: event.id, guest_id: guest.id, storage_path: storagePath, original_filename: file.name, mime_type: "image/jpeg", size_bytes: file.size, status: "pending" }));
+    }
+    return Response.json({ ok: true, count: uploaded.length });
+  } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Błąd uploadu." }, { status: 500 }); }
+}
