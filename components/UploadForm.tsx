@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { galleryHref } from "@/lib/events/config";
 import { validatePhotoList } from "@/lib/photos/validation";
 
@@ -22,6 +22,8 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(locked ? "Poprawny kod z zaproszenia jest wymagany, aby dodać zdjęcia." : null);
+  const [fileCount, setFileCount] = useState(0);
+  const fileRef = useRef<HTMLInputElement>(null);
   const galleryUrl = galleryHref(slug);
 
   async function submit(formData: FormData) {
@@ -39,17 +41,39 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       if (!res.ok) throw new Error(data.error ?? "Nie udało się dodać zdjęć.");
       setMessage("Dziękujemy! Zdjęcia zostały dodane do galerii ❤️");
       setGuestName("");
+      setConsent(false);
+      setFileCount(0);
+      if (fileRef.current) fileRef.current.value = "";
     } catch (e) { setError(e instanceof Error ? e.message : "Wystąpił błąd."); }
     finally { setLoading(false); }
   }
 
-  return <form action={submit} className="card space-y-5">
-    <div className="form-intro"><h2>Dodaj zdjęcia do wspólnej galerii</h2><p>Zdjęcia pojawią się od razu w galerii.</p></div>
-    <div><label>Imię gościa</label><input required name="guestName" value={guestName} onChange={(e)=>setGuestName(e.target.value)} placeholder="np. Kasia" /></div>
-    {!initialCode && <div><label>Kod z zaproszenia</label><input required name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} /></div>}
-    <div><label>Zdjęcia (maks. 10, JPG/PNG/WebP, do 10 MB)</label><input required name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp" /></div>
-    <label className="flex gap-3 text-sm"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</label>
+  if (message) {
+    return <section className="card success-card" aria-live="polite">
+      <div className="success-icon">♥</div>
+      <h2>Dziękujemy!</h2>
+      <p>{message}</p>
+      <Link className="btn w-full" href={galleryUrl}>Zobacz galerię</Link>
+    </section>;
+  }
+
+  return <form action={submit} className="card upload-card space-y-5">
+    <div className="form-intro"><h2>Dodaj zdjęcia do wspólnej galerii</h2><p>Wpisz imię, wybierz ulubione kadry i wyślij je jednym kliknięciem.</p></div>
+    <div><label htmlFor="guestName">Imię gościa</label><input id="guestName" required name="guestName" value={guestName} onChange={(e)=>setGuestName(e.target.value)} placeholder="np. Kasia" /></div>
+    {!initialCode && <div><label htmlFor="accessCode">Kod z zaproszenia</label><input id="accessCode" required name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod" /></div>}
+    <div>
+      <label htmlFor="photos">Zdjęcia</label>
+      <label className="upload-zone" htmlFor="photos">
+        <span className="upload-icon">⌁</span>
+        <strong>Wybierz zdjęcia z telefonu</strong>
+        <span>Maksymalnie 10 zdjęć</span>
+        <small>{fileCount > 0 ? `Wybrano: ${fileCount}` : "JPG, PNG lub WebP, do 10 MB każde"}</small>
+      </label>
+      <input ref={fileRef} id="photos" className="sr-only" required name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e)=>setFileCount(e.target.files?.length ?? 0)} />
+    </div>
+    <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</span></label>
     <button disabled={loading || locked} className="btn w-full">{loading ? "Dodawanie..." : "Dodaj zdjęcia"}</button>
-    {message && <div className="success"><p>{message}</p><Link className="btn btn-secondary w-full" href={galleryUrl}>Zobacz galerię</Link></div>}{error && <p className="error">{error}</p>}
+    <Link className="btn btn-secondary w-full" href={galleryUrl}>Zobacz galerię zdjęć</Link>
+    {error && <p className="error" role="alert">{error}</p>}
   </form>;
 }
