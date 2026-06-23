@@ -1,5 +1,5 @@
+import Link from "next/link";
 import UploadForm from "@/components/UploadForm";
-import WeddingHero from "@/components/WeddingHero";
 import WeddingShell from "@/components/WeddingShell";
 import { galleryHref } from "@/lib/events/config";
 
@@ -12,8 +12,10 @@ export default async function WeddingPage({ params, searchParams }: { params: Pr
     const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
     try { const res = await fetch(`${base}/api/validate-event`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, accessCode: code }), cache: "no-store" }); valid = res.ok; } catch { valid = false; }
   }
-  return <WeddingShell>
-    <WeddingHero subtitle="Podziel się zdjęciami z naszego wesela" description="Dodane zdjęcia pojawią się we wspólnej galerii" primaryHref="#upload" primaryLabel="Dodaj zdjęcia" actionHref={galleryHref(slug, code || undefined)} actionLabel="Zobacz galerię" />
+  return <WeddingShell screen>
+    <header className="mobile-topbar">
+      <Link href="/" aria-label="Wróć">‹</Link><span>NATALIA & ROBERT</span><Link href={galleryHref(slug, code || undefined)} aria-label="Galeria">♡</Link>
+    </header>
     <UploadForm slug={slug} initialCode={code} locked={Boolean(code) && !valid} />
   </WeddingShell>;
 }
