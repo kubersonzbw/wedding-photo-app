@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { galleryHref } from "@/lib/events/config";
 import { validatePhotoList } from "@/lib/photos/validation";
+import UploadDropzone from "@/components/UploadDropzone";
 
 async function compressImage(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
@@ -20,14 +21,14 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const [accessCode, setAccessCode] = useState(initialCode);
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(locked ? "Ten link wygląda na nieprawidłowy. Poproś parę młodą o poprawny kod." : null);
   const [fileCount, setFileCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
-  const galleryUrl = galleryHref(slug);
+  const galleryUrl = galleryHref(slug, accessCode || undefined);
 
   async function submit(formData: FormData) {
-    setLoading(true); setError(null); setMessage(null);
+    setLoading(true); setError(null); setSuccess(false);
     try {
       if (!consent) throw new Error("Zaznacz zgodę, aby dodać zdjęcia do wspólnej galerii.");
       const selected = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
@@ -39,7 +40,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       const res = await fetch("/api/upload", { method: "POST", body: upload });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Nie udało się dodać zdjęć. Spróbuj ponownie.");
-      setMessage("Dziękujemy! Zdjęcia są już w galerii ❤️");
+      setSuccess(true);
       setGuestName("");
       setConsent(false);
       setFileCount(0);
@@ -48,40 +49,30 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     finally { setLoading(false); }
   }
 
-  if (message) {
+  if (success) {
     return <section className="memory-card success-state" aria-live="polite">
-      <div className="success-bloom"><span>♥</span></div>
-      <p className="script-note">Wspomnienie zapisane</p>
-      <h2>{message}</h2>
-      <p>Twoje kadry dołączyły do naszej ślubnej opowieści.</p>
+      <div className="success-bloom"><span>📷</span></div>
+      <h2>Dziękujemy!</h2>
+      <p>Zdjęcia są już w galerii ❤️</p>
       <div className="success-actions">
         <Link className="btn btn-primary" href={galleryUrl}>Zobacz galerię</Link>
-        <button className="btn btn-ghost" onClick={() => setMessage(null)}>Dodaj kolejne zdjęcia</button>
+        <button className="btn btn-ghost" onClick={() => setSuccess(false)}>Dodaj kolejne zdjęcia</button>
       </div>
     </section>;
   }
 
-  return <form action={submit} className="memory-card upload-card">
+  return <form id="upload" action={submit} className="memory-card upload-card">
     <div className="card-heading">
-      <span className="tiny-ornament">✦</span>
-      <h2>Dodaj wspomnienie</h2>
-      <p>Wpisz imię i wybierz ulubione kadry — resztą zajmiemy się za Ciebie.</p>
+      <span className="tiny-ornament">✦ Wspólna galeria</span>
+      <h2>Dodaj zdjęcia do wspólnej galerii</h2>
+      <p>Wpisz imię, wybierz ulubione kadry i wyślij je jednym kliknięciem.</p>
     </div>
-    <div className="floating-field"><label htmlFor="guestName">Imię gościa</label><input id="guestName" required name="guestName" value={guestName} onChange={(e)=>setGuestName(e.target.value)} placeholder="np. Kasia" /></div>
-    {!initialCode && <div className="floating-field"><label htmlFor="accessCode">Kod z zaproszenia</label><input id="accessCode" required name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod" /></div>}
-    <div>
-      <label className="sr-only" htmlFor="photos">Zdjęcia</label>
-      <label className="upload-dropzone" htmlFor="photos">
-        <span className="camera-icon">◌</span>
-        <strong>Wybierz zdjęcia z telefonu</strong>
-        <span>Możesz dodać do 10 zdjęć naraz</span>
-        <small>{fileCount > 0 ? `Wybrano ${fileCount} zdjęć` : "JPG, PNG lub WebP — lekko i bezpiecznie"}</small>
-      </label>
-      <input ref={fileRef} id="photos" className="sr-only" required name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e)=>setFileCount(e.target.files?.length ?? 0)} />
-    </div>
+    <div className="floating-field person-field"><label htmlFor="guestName">Twoje imię</label><input id="guestName" required name="guestName" value={guestName} onChange={(e)=>setGuestName(e.target.value)} placeholder="np. Kasia" /></div>
+    {!initialCode && <div className="floating-field"><label htmlFor="accessCode">Kod z zaproszenia</label><input id="accessCode" required name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod z zaproszenia" /></div>}
+    <UploadDropzone fileRef={fileRef} fileCount={fileCount} onChange={setFileCount} />
     <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</span></label>
-    <button disabled={loading || locked} className="btn btn-primary cta-button">{loading ? "Dodajemy zdjęcia…" : "Dodaj zdjęcia do galerii"}</button>
-    <Link className="text-link" href={galleryUrl}>Zobacz wspólną galerię</Link>
+    <button disabled={loading || locked} className="btn btn-primary cta-button">{loading ? "Dodajemy zdjęcia…" : "Dodaj zdjęcia do galerii"}<span aria-hidden="true">✦</span></button>
+    <Link className="text-link" href={galleryUrl}>Zobacz galerię</Link>
     {error && <p className="error" role="alert">{error}</p>}
   </form>;
 }
