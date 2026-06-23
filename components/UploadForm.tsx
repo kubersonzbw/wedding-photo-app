@@ -1,5 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
+import { galleryHref } from "@/lib/events/config";
 import { validatePhotoList } from "@/lib/photos/validation";
 
 async function compressImage(file: File): Promise<File> {
@@ -20,6 +22,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(locked ? "Poprawny kod z zaproszenia jest wymagany, aby dodać zdjęcia." : null);
+  const galleryUrl = galleryHref(slug);
 
   async function submit(formData: FormData) {
     setLoading(true); setError(null); setMessage(null);
@@ -34,18 +37,19 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       const res = await fetch("/api/upload", { method: "POST", body: upload });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Nie udało się dodać zdjęć.");
-      setMessage("Dziękujemy! Zdjęcia zostały dodane i czekają na zatwierdzenie ❤️");
+      setMessage("Dziękujemy! Zdjęcia zostały dodane do galerii ❤️");
       setGuestName("");
     } catch (e) { setError(e instanceof Error ? e.message : "Wystąpił błąd."); }
     finally { setLoading(false); }
   }
 
   return <form action={submit} className="card space-y-5">
+    <div className="form-intro"><h2>Dodaj zdjęcia do wspólnej galerii</h2><p>Zdjęcia pojawią się od razu w galerii.</p></div>
     <div><label>Imię gościa</label><input required name="guestName" value={guestName} onChange={(e)=>setGuestName(e.target.value)} placeholder="np. Kasia" /></div>
     {!initialCode && <div><label>Kod z zaproszenia</label><input required name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} /></div>}
     <div><label>Zdjęcia (maks. 10, JPG/PNG/WebP, do 10 MB)</label><input required name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp" /></div>
     <label className="flex gap-3 text-sm"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</label>
     <button disabled={loading || locked} className="btn w-full">{loading ? "Dodawanie..." : "Dodaj zdjęcia"}</button>
-    {message && <p className="success">{message}</p>}{error && <p className="error">{error}</p>}
+    {message && <div className="success"><p>{message}</p><Link className="btn btn-secondary w-full" href={galleryUrl}>Zobacz galerię</Link></div>}{error && <p className="error">{error}</p>}
   </form>;
 }
