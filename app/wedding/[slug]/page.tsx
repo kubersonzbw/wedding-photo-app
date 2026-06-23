@@ -13,7 +13,7 @@ export default async function WeddingPage({ params, searchParams }: { params: Pr
     try { const res = await fetch(`${base}/api/validate-event`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, accessCode: code }), cache: "no-store" }); valid = res.ok; } catch { valid = false; }
   }
   return <WeddingShell>
-    <WeddingHero subtitle="Podziel się zdjęciami z naszego dnia" description="Dodaj swoje zdjęcia z wesela — od razu trafią do wspólnej galerii wspomnień." actionHref={galleryHref(slug)} actionLabel="Zobacz galerię" />
+    <WeddingHero subtitle="Podziel się zdjęciami z naszego wesela" description="Dodane zdjęcia pojawią się we wspólnej galerii" primaryHref="#upload" primaryLabel="Dodaj zdjęcia" actionHref={galleryHref(slug, code || undefined)} actionLabel="Zobacz galerię" />
     <UploadForm slug={slug} initialCode={code} locked={Boolean(code) && !valid} />
   </WeddingShell>;
 }
