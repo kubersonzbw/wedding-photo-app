@@ -16,6 +16,7 @@ export default function PhotoLightbox({ photo, current, total, onClose, onPrevio
     <div className="lightbox-actions" onClick={(e) => e.stopPropagation()}>
       <a className="round-control small-control" href={photo.url} download aria-label="Pobierz zdjęcie">↓</a>
       <button className="round-control small-control" aria-label="Serce dekoracyjne">♡</button>
+      <button className="round-control small-control" aria-label="Udostępnij wizualnie">⌯</button>
     </div>
   </div>;
 }

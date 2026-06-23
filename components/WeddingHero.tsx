@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 export default function WeddingHero({
-  eyebrow = "ROBERT & NATALIA",
-  title = "Robert & Natalia",
+  eyebrow = "NATALIA & ROBERT",
+  title = "Natalia & Robert",
   subtitle,
   description,
   primaryHref,
