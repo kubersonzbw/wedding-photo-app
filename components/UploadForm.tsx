@@ -53,7 +53,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     return <section className="memory-card success-state" aria-live="polite">
       <div className="success-bloom"><span>📷</span></div>
       <h2>Dziękujemy!</h2>
-      <p>Zdjęcia są już w galerii 🧡</p>
+      <p>Zdjęcia są już w galerii ❤️</p>
       <div className="success-actions">
         <Link className="btn btn-primary" href={galleryUrl}>Zobacz galerię zdjęć</Link>
         <button className="btn btn-ghost" onClick={() => setSuccess(false)}>Dodaj kolejne zdjęcia</button>
@@ -68,7 +68,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       <p>Wpisz imię, wybierz ulubione kadry i wyślij je jednym kliknięciem.</p>
     </div>
     <div className="floating-field person-field"><label htmlFor="guestName">Twoje imię</label><input id="guestName" required name="guestName" value={guestName} onChange={(e)=>setGuestName(e.target.value)} placeholder="np. Kasia" /></div>
-    {!initialCode && <div className="floating-field"><label htmlFor="accessCode">Kod z zaproszenia</label><input id="accessCode" required name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod z zaproszenia" /></div>}
+    {!initialCode && <div className="floating-field"><label htmlFor="accessCode">Kod weselny</label><input id="accessCode" required name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod weselny" /></div>}
     <UploadDropzone fileRef={fileRef} fileCount={fileCount} onChange={setFileCount} />
     <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</span><b aria-hidden="true">❤</b></label>
     <button disabled={loading || locked} className="btn btn-primary cta-button"><span aria-hidden="true">▣</span>{loading ? "Dodajemy zdjęcia…" : "Dodaj zdjęcia"}<span aria-hidden="true">✦</span></button>

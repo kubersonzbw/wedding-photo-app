@@ -1,5 +1,5 @@
 import { getEventBySlug, insertGuest, insertPhoto, uploadObject } from "@/lib/supabase/admin";
-import { verifySecret } from "@/lib/security/hash";
+import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { validatePhotoList } from "@/lib/photos/validation";
 
@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   try {
     const form = await request.formData();
     const slug = String(form.get("slug") ?? "");
-    const accessCode = String(form.get("accessCode") ?? "");
+    const accessCode = String(form.get("accessCode") ?? form.get("guestCode") ?? "");
     const guestName = String(form.get("guestName") ?? "").trim();
     const files = form.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
     if (!slug || !accessCode || !guestName) return Response.json({ error: "Uzupełnij wymagane pola." }, { status: 400 });
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0] ?? "local";
     if (!checkRateLimit(`upload:${ip}`, undefined, undefined, files.length).allowed) return Response.json({ error: "Limit 30 zdjęć / 10 minut został przekroczony." }, { status: 429 });
     const event = await getEventBySlug(slug);
-    if (!event || !verifySecret(accessCode, event.access_code_hash)) return Response.json({ error: "Niepoprawny kod wydarzenia." }, { status: 401 });
+    if (!event || !verifyGuestCode(accessCode, event)) return Response.json({ error: "Niepoprawny kod weselny." }, { status: 401 });
     const guest = await insertGuest(event.id, guestName);
     const uploaded = [];
     for (const file of files) {
