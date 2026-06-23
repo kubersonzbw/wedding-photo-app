@@ -1,8 +1,17 @@
 import Link from "next/link";
-import UploadForm from "@/components/UploadForm";
-import { galleryHref } from "@/lib/events/config";
+import { DEFAULT_EVENT_SLUG, galleryHref } from "@/lib/events/config";
 
 export default function Home() {
-  const slug = process.env.NEXT_PUBLIC_DEFAULT_EVENT_SLUG ?? "robert-natalia";
-  return <main className="page-shell"><section className="hero"><p className="eyebrow">Galeria weselna</p><h1>Robert & Natalia</h1><p>Dodaj zdjęcia do wspólnej galerii ❤️</p><p>Zdjęcia pojawią się od razu w galerii.</p><Link className="btn btn-secondary hero-link" href={galleryHref(slug)}>Zobacz galerię zdjęć</Link></section><UploadForm slug={slug} /></main>;
+  const slug = DEFAULT_EVENT_SLUG;
+  return <main className="page-shell home-shell">
+    <section className="hero home-hero card">
+      <p className="eyebrow">Galeria weselna</p>
+      <h1>Robert & Natalia</h1>
+      <p className="hero-subtitle">Elegancka przestrzeń na wspólne wspomnienia z wesela.</p>
+      <div className="home-actions">
+        <Link className="btn" href={`/wedding/${slug}`}>Dodaj zdjęcia</Link>
+        <Link className="btn btn-secondary" href={galleryHref(slug)}>Zobacz galerię</Link>
+      </div>
+    </section>
+  </main>;
 }
