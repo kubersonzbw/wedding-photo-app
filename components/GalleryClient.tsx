@@ -1,10 +1,13 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import EmptyGalleryState from "@/components/EmptyGalleryState";
+import GalleryGrid from "@/components/GalleryGrid";
+import PhotoLightbox from "@/components/PhotoLightbox";
+import WeddingHero from "@/components/WeddingHero";
+import WeddingShell from "@/components/WeddingShell";
 
 const DEFAULT_SLUG = process.env.NEXT_PUBLIC_DEFAULT_EVENT_SLUG ?? "robert-natalia";
-
 type Photo = { id: string; url: string; guestName?: string; createdAt: string };
 
 export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode = "" }: { initialSlug?: string; initialCode?: string }) {
@@ -16,16 +19,17 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
   const [loading, setLoading] = useState(false);
   const active = activeIndex === null ? null : photos[activeIndex];
   const initialLoadStarted = useRef(false);
+  const uploadHref = `/wedding/${encodeURIComponent(slug)}${galleryCode ? `?code=${encodeURIComponent(galleryCode)}` : ""}`;
 
   const load = useCallback(async (nextSlug = slug, nextGalleryCode = galleryCode) => {
     setLoading(true); setError("");
     try {
       const res = await fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: nextSlug, galleryCode: nextGalleryCode }) });
       const data = await res.json();
-      if (!res.ok) { setPhotos([]); setError(data.error ?? "Nie udało się pobrać galerii. Sprawdź kod galerii."); }
+      if (!res.ok) { setPhotos([]); setError(data.error ?? "Nie udało się otworzyć galerii. Spróbuj ponownie."); }
       else setPhotos(data.photos ?? []);
     } catch {
-      setPhotos([]); setError("Nie udało się pobrać galerii. Spróbuj ponownie za chwilę.");
+      setPhotos([]); setError("Nie udało się otworzyć galerii. Spróbuj ponownie za chwilę.");
     } finally { setLoading(false); }
   }, [galleryCode, slug]);
 
@@ -47,22 +51,20 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, photos.length]);
 
-  return <main className="page-shell wide">
-    <section className="hero gallery-hero"><p className="eyebrow">Robert & Natalia</p><h1>Galeria zdjęć</h1><p>Wspomnienia z wesela Roberta i Natalii</p></section>
-    <div className="card gallery-controls">
-      <div><label htmlFor="slug">Wydarzenie</label><input id="slug" value={slug} onChange={(e)=>setSlug(e.target.value)} placeholder="robert-natalia" /></div>
-      <div><label htmlFor="galleryCode">Kod galerii</label><input id="galleryCode" value={galleryCode} onChange={(e)=>setGalleryCode(e.target.value)} placeholder="kod galerii" /></div>
-      <button className="btn" onClick={()=>load()} disabled={loading}>{loading ? "Ładowanie..." : "Pokaż galerię"}</button>
-      {error && <p className="error gallery-error" role="alert">Nie możemy otworzyć galerii. Sprawdź, czy kod galerii jest poprawny.</p>}
-    </div>
-    {loading && <div className="grid-gallery" aria-label="Ładowanie galerii">{Array.from({ length: 8 }).map((_, i)=><div className="skeleton-tile" key={i} />)}</div>}
-    {!loading && !error && photos.length > 0 && <div className="grid-gallery">{photos.map((p, index)=><button key={p.id} onClick={()=>setActiveIndex(index)} className="photo-tile"><img src={p.url} alt="Zdjęcie z wesela dodane przez gościa" /></button>)}</div>}
-    {!loading && !error && photos.length === 0 && <section className="card empty-card"><h2>Jeszcze nie ma zdjęć w galerii</h2><p>Bądź pierwszy i dodaj zdjęcia z wesela</p><Link className="btn btn-secondary" href={`/wedding/${encodeURIComponent(slug)}${galleryCode ? `?code=${encodeURIComponent(galleryCode)}` : ""}`}>Dodaj zdjęcia</Link></section>}
-    {active && <div className="modal" onClick={()=>setActiveIndex(null)} role="dialog" aria-modal="true" aria-label="Podgląd zdjęcia">
-      <button className="modal-close" onClick={()=>setActiveIndex(null)} aria-label="Zamknij podgląd zdjęcia">×</button>
-      <button className="modal-nav modal-prev" onClick={(e)=>{ e.stopPropagation(); setActiveIndex((current) => current === null ? current : (current - 1 + photos.length) % photos.length); }} aria-label="Poprzednie zdjęcie">‹</button>
-      <img src={active.url} alt="Duże zdjęcie z wesela dodane przez gościa" onClick={(e)=>e.stopPropagation()} />
-      <button className="modal-nav modal-next" onClick={(e)=>{ e.stopPropagation(); setActiveIndex((current) => current === null ? current : (current + 1) % photos.length); }} aria-label="Następne zdjęcie">›</button>
-    </div>}
-  </main>;
+  return <WeddingShell wide>
+    <WeddingHero eyebrow="Robert & Natalia" subtitle="Galeria wspomnień" description="Zdjęcia dodane przez naszych gości" />
+    <section className="memory-card gallery-panel">
+      <div className="gallery-panel-heading"><span>Otwórz ścianę wspomnień</span><Link className="btn btn-primary" href={uploadHref}>Dodaj zdjęcia</Link></div>
+      <div className="gallery-controls">
+        <div className="floating-field"><label htmlFor="slug">Wydarzenie</label><input id="slug" value={slug} onChange={(e)=>setSlug(e.target.value)} placeholder="robert-natalia" /></div>
+        <div className="floating-field"><label htmlFor="galleryCode">Kod galerii</label><input id="galleryCode" value={galleryCode} onChange={(e)=>setGalleryCode(e.target.value)} placeholder="kod galerii" /></div>
+        <button className="btn btn-ghost" onClick={()=>load()} disabled={loading}>{loading ? "Przygotowujemy galerię…" : "Pokaż galerię"}</button>
+      </div>
+      {error && <p className="error gallery-error" role="alert">Ten link wygląda na nieprawidłowy. Poproś parę młodą o poprawny kod.</p>}
+    </section>
+    {loading && <div className="memory-grid" aria-label="Przygotowujemy galerię">{Array.from({ length: 8 }).map((_, i)=><div className="skeleton-tile" key={i} />)}</div>}
+    {!loading && !error && photos.length > 0 && <GalleryGrid photos={photos} onOpen={setActiveIndex} />}
+    {!loading && !error && photos.length === 0 && <EmptyGalleryState href={uploadHref} />}
+    {active && <PhotoLightbox photo={active} current={(activeIndex ?? 0) + 1} total={photos.length} onClose={() => setActiveIndex(null)} onPrevious={() => setActiveIndex((current) => current === null ? current : (current - 1 + photos.length) % photos.length)} onNext={() => setActiveIndex((current) => current === null ? current : (current + 1) % photos.length)} />}
+  </WeddingShell>;
 }
