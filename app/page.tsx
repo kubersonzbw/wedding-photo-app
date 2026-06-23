@@ -1,17 +1,17 @@
 import Link from "next/link";
+import WeddingHero from "@/components/WeddingHero";
+import WeddingShell from "@/components/WeddingShell";
 import { DEFAULT_EVENT_SLUG, galleryHref } from "@/lib/events/config";
 
 export default function Home() {
   const slug = DEFAULT_EVENT_SLUG;
-  return <main className="page-shell home-shell">
-    <section className="hero home-hero card">
-      <p className="eyebrow">Galeria weselna</p>
-      <h1>Robert & Natalia</h1>
-      <p className="hero-subtitle">Elegancka przestrzeń na wspólne wspomnienia z wesela.</p>
+  return <WeddingShell centered>
+    <section className="home-card memory-card">
+      <WeddingHero eyebrow="Wspólna galeria weselna" subtitle="Wspólna galeria weselna" description="Jedno miejsce na najpiękniejsze kadry od rodziny i przyjaciół." />
       <div className="home-actions">
-        <Link className="btn" href={`/wedding/${slug}`}>Dodaj zdjęcia</Link>
-        <Link className="btn btn-secondary" href={galleryHref(slug)}>Zobacz galerię</Link>
+        <Link className="btn btn-primary" href={`/wedding/${slug}`}>Dodaj zdjęcia</Link>
+        <Link className="btn btn-ghost" href={galleryHref(slug)}>Zobacz galerię</Link>
       </div>
     </section>
-  </main>;
+  </WeddingShell>;
 }
