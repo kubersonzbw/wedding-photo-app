@@ -22,11 +22,21 @@ function photoCountLabel(count: number) {
   return `${count} zdjęć`;
 }
 
+function mergeUniquePhotos(current: Photo[], next: Photo[]) {
+  const seen = new Set(current.map((photo) => photo.id));
+  return [...current, ...next.filter((photo) => {
+    if (seen.has(photo.id)) return false;
+    seen.add(photo.id);
+    return true;
+  })];
+}
+
 export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode = "" }: { initialSlug?: string; initialCode?: string }) {
   const [slug] = useState(initialSlug);
   const [draftCode, setDraftCode] = useState(initialCode);
   const [verifiedCode, setVerifiedCode] = useState("");
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(Boolean(initialCode));
@@ -43,6 +53,7 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
   const invalidCodeError = error.toLowerCase().includes("kod");
   const errorTitle = invalidCodeError ? "Niepoprawny kod" : "Nie udało się pobrać galerii";
   const errorDescription = invalidCodeError ? "Sprawdź kod weselny i spróbuj ponownie." : "Spróbuj ponownie za chwilę.";
+  const showCodeCard = !initialCode && !verifiedCode;
 
   const load = useCallback(async (nextSlug = slug, nextGuestCode = draftCode, append = false, silent = false) => {
     const codeToVerify = nextGuestCode.trim();
@@ -56,6 +67,7 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
       if (!res.ok) {
         if (!append && !silent) {
           setPhotos([]);
+          setTotalCount(0);
           setVerifiedCode("");
           setHasMore(false);
           setError(data.error ?? "Nie udało się pobrać galerii.");
@@ -63,7 +75,8 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
       }
       else {
         const nextPhotos = data.photos ?? [];
-        setPhotos((current) => append ? [...current, ...nextPhotos] : nextPhotos);
+        setPhotos((current) => append ? mergeUniquePhotos(current, nextPhotos) : nextPhotos);
+        setTotalCount(Number(data.totalCount) || 0);
         setHasMore(Boolean(data.hasMore));
         setVerifiedCode(codeToVerify);
         setDraftCode(codeToVerify);
@@ -72,6 +85,7 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
     } catch {
       if (!append && !silent) {
         setPhotos([]);
+        setTotalCount(0);
         setVerifiedCode("");
         setHasMore(false);
         setError("Nie udało się pobrać galerii.");
@@ -84,6 +98,7 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
     setDraftCode(value);
     setError("");
     setPhotos([]);
+    setTotalCount(0);
     setHasRequested(false);
     setHasMore(false);
     if (value.trim() !== verifiedCode) setVerifiedCode("");
@@ -148,8 +163,8 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
             <span className="mobile-topbar-heart-icon mobile-topbar-heart-icon-filled" />
           </span>
         </header>
-        <section className="gallery-intro"><h1>Galeria wspomnień</h1><p>Zdjęcia dodane przez naszych gości</p>{hasRequested && photos.length > 0 && <span className="gallery-photo-count">{photoCountLabel(photos.length)} od gości</span>}<Link className="btn btn-primary gallery-add-button" href={uploadHref}><span className="cta-camera-icon" aria-hidden="true" /><span className="gallery-add-label">Dodaj zdjęcia</span></Link></section>
-        {!initialCode && <section className="gallery-code-card"><div className="floating-field"><label htmlFor="guestCode">Kod weselny</label><input id="guestCode" value={draftCode} onChange={(e)=>handleCodeChange(e.target.value)} placeholder="Wpisz kod weselny" /></div><button className="btn btn-ghost" onClick={()=>load()} disabled={loading || !draftCode.trim()}><span className="gallery-code-icon" aria-hidden="true" /><span className="gallery-code-label">{loading ? "Przygotowujemy galerię…" : "Pokaż galerię"}</span></button></section>}
+        <section className="gallery-intro"><h1>Galeria wspomnień</h1><p>Zdjęcia dodane przez naszych gości</p>{hasRequested && photos.length > 0 && totalCount > 0 && <span className="gallery-photo-count">{photoCountLabel(totalCount)} od gości</span>}<Link className="btn btn-primary gallery-add-button" href={uploadHref}><span className="cta-camera-icon" aria-hidden="true" /><span className="gallery-add-label">Dodaj zdjęcia</span></Link></section>
+        {showCodeCard && <section className="gallery-code-card"><div className="floating-field"><label htmlFor="guestCode">Kod weselny</label><input id="guestCode" value={draftCode} onChange={(e)=>handleCodeChange(e.target.value)} placeholder="Wpisz kod weselny" /></div><button className="btn btn-ghost" onClick={()=>load()} disabled={loading || !draftCode.trim()}><span className="gallery-code-icon" aria-hidden="true" /><span className="gallery-code-label">{loading ? "Przygotowujemy galerię…" : "Pokaż galerię"}</span></button></section>}
         {loading && <LoadingGalleryState showCopy={Boolean(initialCode)} />}
         {!loading && error && <ErrorState title={errorTitle} description={errorDescription} onRefresh={invalidCodeError ? undefined : () => load()} />}
         {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={setActiveIndex} />}

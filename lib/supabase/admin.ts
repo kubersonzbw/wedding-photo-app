@@ -62,7 +62,23 @@ export async function updatePhotoStatus(id: string, status: "approved" | "hidden
 
 export async function approvedPhotos(eventId: string, limit?: number, offset = 0) {
   const pagination = limit ? `&limit=${limit}&offset=${offset}` : "";
-  return supabaseFetch(`/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=*,guests(name)&order=created_at.desc${pagination}`);
+  return supabaseFetch(`/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=*,guests(name)&order=created_at.desc,id.desc${pagination}`);
+}
+
+export async function countApprovedPhotos(eventId: string) {
+  const env = assertSupabaseAdminEnv();
+  const res = await fetch(`${env.url}/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=id&limit=1`, {
+    headers: {
+      apikey: env.serviceKey,
+      Authorization: `Bearer ${env.serviceKey}`,
+      Prefer: "count=exact",
+      Range: "0-0",
+    },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const contentRange = res.headers.get("content-range");
+  return Number(contentRange?.split("/")[1] ?? 0);
 }
 
 type ImageTransform = {
