@@ -47,7 +47,10 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   const active = activeIndex === null ? null : photos[activeIndex];
   const initialLoadStarted = useRef(false);
   const pullStartY = useRef<number | null>(null);
-  const uploadHref = `/wedding/${encodeURIComponent(slug)}${verifiedCode ? `?code=${encodeURIComponent(verifiedCode)}` : ""}`;
+  const uploadParams = new URLSearchParams({ returnTo: "gallery" });
+  if (verifiedCode) uploadParams.set("code", verifiedCode);
+  const uploadHref = `/wedding/${encodeURIComponent(slug)}?${uploadParams.toString()}`;
+  const landingHref = verifiedCode ? `/?code=${encodeURIComponent(verifiedCode)}` : "/";
   const canPullRefresh = hasRequested && Boolean(verifiedCode) && !loading && !loadingMore && !pullRefreshing && activeIndex === null;
   const invalidCodeError = error.toLowerCase().includes("kod");
   const errorTitle = invalidCodeError ? "Niepoprawny kod" : "Nie udało się pobrać galerii";
@@ -156,7 +159,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
       </div>
       <div className="gallery-refresh-content" style={{ transform: pullDistance ? `translateY(${pullDistance}px)` : undefined }}>
         <header className="mobile-topbar">
-          <Link href={uploadHref} aria-label="Wróć do dodawania zdjęć">‹</Link>
+          <Link href={landingHref} aria-label="Wróć do ekranu startowego">‹</Link>
           <span>NATALIA &amp; ROBERT</span>
           <span className="mobile-topbar-action" aria-hidden="true">
             <span className="mobile-topbar-heart-icon mobile-topbar-heart-icon-filled" />

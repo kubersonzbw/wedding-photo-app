@@ -7,9 +7,12 @@ import { galleryHref } from "@/lib/events/config";
 import { resolveEventByHost } from "@/lib/events/resolve";
 import { verifyGuestCode } from "@/lib/security/hash";
 
-export default async function WeddingPage({ searchParams }: { searchParams: Promise<{ code?: string | string[] }> }) {
-  const codeParam = (await searchParams).code;
+export default async function WeddingPage({ searchParams }: { searchParams: Promise<{ code?: string | string[]; returnTo?: string | string[] }> }) {
+  const search = await searchParams;
+  const codeParam = search.code;
+  const returnToParam = search.returnTo;
   const code = Array.isArray(codeParam) ? codeParam[0] ?? "" : codeParam ?? "";
+  const returnTo = Array.isArray(returnToParam) ? returnToParam[0] ?? "" : returnToParam ?? "";
   const headersList = await headers();
   const event = await resolveEventByHost(headersList.get("x-forwarded-host") ?? headersList.get("host"));
 
@@ -20,12 +23,12 @@ export default async function WeddingPage({ searchParams }: { searchParams: Prom
   }
 
   const locked = code ? !verifyGuestCode(code, event) : false;
-  const landingQuery = new URLSearchParams({ slug: event.slug });
-  if (code) landingQuery.set("code", code);
+  const landingHref = code ? `/?code=${encodeURIComponent(code)}` : "/";
+  const backHref = returnTo === "gallery" ? galleryHref(event.slug, code || undefined) : landingHref;
 
   return <WeddingShell screen>
     <header className="mobile-topbar">
-      <Link href={`/?${landingQuery.toString()}`} aria-label="Wróć">‹</Link><span>NATALIA & ROBERT</span><Link className="mobile-topbar-heart-link" href={galleryHref(event.slug, code || undefined)} aria-label="Galeria">
+      <Link href={backHref} aria-label="Wróć">‹</Link><span>NATALIA & ROBERT</span><Link className="mobile-topbar-heart-link" href={galleryHref(event.slug, code || undefined)} aria-label="Galeria">
         <span className="mobile-topbar-heart-icon mobile-topbar-heart-icon-outline" aria-hidden="true" />
       </Link>
     </header>
