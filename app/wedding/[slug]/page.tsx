@@ -2,15 +2,21 @@ import Link from "next/link";
 import UploadForm from "@/components/UploadForm";
 import WeddingShell from "@/components/WeddingShell";
 import { galleryHref } from "@/lib/events/config";
+import { verifyGuestCode } from "@/lib/security/hash";
+import { getEventBySlug } from "@/lib/supabase/admin";
 
 export default async function WeddingPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ code?: string | string[] }> }) {
   const { slug } = await params;
   const codeParam = (await searchParams).code;
   const code = Array.isArray(codeParam) ? codeParam[0] ?? "" : codeParam ?? "";
-  let valid = false;
+  let locked = false;
   if (code) {
-    const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-    try { const res = await fetch(`${base}/api/validate-event`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, accessCode: code }), cache: "no-store" }); valid = res.ok; } catch { valid = false; }
+    try {
+      const event = await getEventBySlug(slug);
+      locked = !event || !verifyGuestCode(code, event);
+    } catch {
+      locked = false;
+    }
   }
   return <WeddingShell screen>
     <header className="mobile-topbar">
@@ -18,6 +24,6 @@ export default async function WeddingPage({ params, searchParams }: { params: Pr
         <span className="mobile-topbar-heart-icon mobile-topbar-heart-icon-outline" aria-hidden="true" />
       </Link>
     </header>
-    <UploadForm slug={slug} initialCode={code} locked={Boolean(code) && !valid} />
+    <UploadForm slug={slug} initialCode={code} locked={locked} />
   </WeddingShell>;
 }
