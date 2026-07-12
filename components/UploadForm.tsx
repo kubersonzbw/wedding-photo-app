@@ -108,7 +108,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   }
 
   if (success) {
-    return <section className="memory-card success-state" aria-live="polite">
+    return <section className="success-state" aria-live="polite">
       <div className="success-bloom"><span className="success-camera-icon" aria-hidden="true" /></div>
       <h2>Dziękujemy!</h2>
       <p>Zdjęcia są już w galerii <span className="success-inline-heart" aria-hidden="true" /></p>
@@ -125,6 +125,10 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       <h2>Dodaj zdjęcia do wspólnej galerii</h2>
       <p>Wpisz imię, wybierz ulubione kadry i wyślij je jednym kliknięciem.</p>
     </div>
+    {error && <p className="error upload-error-top" role="alert">
+      <span className="error-broken-heart" aria-hidden="true" />
+      <span>{error}</span>
+    </p>}
     <div className="floating-field person-field">
       <label htmlFor="guestName">Twoje imię</label>
       <input id="guestName" name="guestName" value={guestName} onChange={(e)=>setGuestName(e.target.value)} placeholder="np. Kasia" />
@@ -140,9 +144,5 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</span><span className="consent-heart-icon" aria-hidden="true" /></label>
     <button disabled={loading || locked} className="btn btn-primary cta-button"><span className="cta-camera-icon" aria-hidden="true" /><span className="cta-button-label">{loading ? "Dodajemy zdjęcia…" : "Dodaj zdjęcia"}</span></button>
     <Link className="text-link" href={galleryUrl}>Zobacz galerię zdjęć</Link>
-    {error && <p className="error" role="alert">
-      <span className="error-broken-heart" aria-hidden="true" />
-      <span>{error}</span>
-    </p>}
   </form>;
 }

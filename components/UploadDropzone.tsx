@@ -1,9 +1,19 @@
 import type { RefObject } from "react";
 
+function photoCountLabel(count: number) {
+  if (count === 1) return "1 zdjęcie";
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return `${count} zdjęcia`;
+  return `${count} zdjęć`;
+}
+
 export default function UploadDropzone({ fileRef, fileCount, onChange }: { fileRef: RefObject<HTMLInputElement | null>; fileCount: number; onChange: (files: File[]) => void }) {
+  const hasFiles = fileCount > 0;
+
   return <div>
     <label className="sr-only" htmlFor="photos">Zdjęcia</label>
-    <label className="upload-dropzone" htmlFor="photos">
+    <label className={`upload-dropzone${hasFiles ? " upload-dropzone-selected" : ""}`} htmlFor="photos">
       <span className="upload-dropzone-icon" aria-hidden="true">
         <svg viewBox="0 0 198.931 198.931">
           <path d="M99.469 69.561c-25.423 0-46.104 20.683-46.104 46.104s20.683 46.104 46.104 46.104c25.421 0 46.104-20.683 46.104-46.104S124.89 69.561 99.469 69.561Zm0 77.349c-17.229 0-31.245-14.017-31.245-31.245 0-17.228 14.017-31.245 31.245-31.245 17.228 0 31.245 14.017 31.245 31.245 0 17.227-14.016 31.245-31.245 31.245Z" />
@@ -11,9 +21,9 @@ export default function UploadDropzone({ fileRef, fileCount, onChange }: { fileR
           <rect x="156.012" y="71.816" width="18.989" height="14.859" />
         </svg>
       </span>
-      <strong>Wybierz zdjęcia z telefonu</strong>
-      <span>Maksymalnie 10 zdjęć</span>
-      <small>{fileCount > 0 ? `Wybrano ${fileCount} zdjęć` : "JPG, PNG lub WebP, do 25 MB każde"}</small>
+      <strong>{hasFiles ? "Gotowe do wysłania" : "Wybierz zdjęcia z telefonu"}</strong>
+      <span>{hasFiles ? `Wybrano ${photoCountLabel(fileCount)}` : "Maksymalnie 10 zdjęć"}</span>
+      <small>{hasFiles ? "Możesz dotknąć tutaj, aby zmienić wybór" : "JPG, PNG lub WebP, do 25 MB każde"}</small>
     </label>
     <input ref={fileRef} id="photos" className="sr-only" name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e) => onChange(Array.from(e.target.files ?? []))} />
   </div>;
