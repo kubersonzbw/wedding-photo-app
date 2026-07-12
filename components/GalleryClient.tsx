@@ -26,7 +26,6 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
   const active = activeIndex === null ? null : photos[activeIndex];
   const initialLoadStarted = useRef(false);
   const uploadHref = `/wedding/${encodeURIComponent(slug)}${verifiedCode ? `?code=${encodeURIComponent(verifiedCode)}` : ""}`;
-  const activeDownloadHref = active ? `/api/download?slug=${encodeURIComponent(slug)}&code=${encodeURIComponent(verifiedCode)}&id=${encodeURIComponent(active.id)}` : "";
   const invalidCodeError = error.toLowerCase().includes("kod");
   const errorTitle = invalidCodeError ? "Niepoprawny kod" : "Nie udało się pobrać galerii";
   const errorDescription = invalidCodeError ? "Sprawdź kod weselny i spróbuj ponownie." : "Spróbuj ponownie za chwilę.";
@@ -94,6 +93,6 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
     {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={setActiveIndex} />}
     {!loading && !error && hasRequested && photos.length > 0 && hasMore && <button className="btn btn-ghost gallery-load-more" onClick={() => load(slug, verifiedCode || draftCode, true)} disabled={loadingMore}>{loadingMore ? "Ładujemy zdjęcia…" : "Pokaż więcej zdjęć"}</button>}
     {!loading && !error && hasRequested && photos.length === 0 && <EmptyGalleryState href={uploadHref} />}
-    {active && <PhotoLightbox photo={active} downloadHref={activeDownloadHref} current={(activeIndex ?? 0) + 1} total={photos.length} onClose={() => setActiveIndex(null)} onPrevious={() => setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length)} onNext={() => setActiveIndex((c) => c === null ? c : (c + 1) % photos.length)} />}
+    {active && <PhotoLightbox photo={active} current={(activeIndex ?? 0) + 1} total={photos.length} onClose={() => setActiveIndex(null)} onPrevious={() => setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length)} onNext={() => setActiveIndex((c) => c === null ? c : (c + 1) % photos.length)} />}
   </WeddingShell>;
 }

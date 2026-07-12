@@ -47,11 +47,6 @@ export async function approvedPhotos(eventId: string, limit?: number, offset = 0
   return supabaseFetch(`/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=*,guests(name)&order=created_at.desc${pagination}`);
 }
 
-export async function getApprovedPhoto(eventId: string, photoId: string) {
-  const rows = await supabaseFetch(`/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&id=eq.${encodeURIComponent(photoId)}&status=eq.approved&select=*`);
-  return rows?.[0] ?? null;
-}
-
 type ImageTransform = {
   width?: number;
   height?: number;
@@ -79,13 +74,6 @@ export async function objectExists(path: string) {
   if (res.status === 404) return false;
   if (!res.ok) throw new Error(await res.text());
   return true;
-}
-
-export async function downloadObject(path: string) {
-  const env = assertSupabaseAdminEnv();
-  const res = await fetch(`${env.url}/storage/v1/object/wedding-photos/${encodeStoragePath(path)}`, { headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` }, cache: "no-store" });
-  if (!res.ok) throw new Error(await res.text());
-  return res;
 }
 
 export async function removeObject(path: string) {
