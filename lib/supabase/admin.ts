@@ -1,6 +1,6 @@
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-type PhotoStatus = "approved" | "hidden" | "deleted";
+type PhotoStatus = "approved" | "hidden";
 
 export function assertSupabaseAdminEnv() {
   if (!url || !serviceKey) throw new Error("Missing Supabase server environment variables.");
@@ -63,13 +63,13 @@ export async function deleteGuest(guestId: string) {
 }
 
 export async function listPhotos(status?: string) {
-  const filter = status && status !== "all" ? `&status=eq.${encodeURIComponent(status)}` : "";
+  const filter = status && status !== "all" ? `&status=eq.${encodeURIComponent(status)}` : "&status=neq.deleted";
   return supabaseFetch(`/rest/v1/photos?select=*,guests(name),events(slug,title)&order=created_at.desc${filter}`);
 }
 
 export async function countPhotos(status?: PhotoStatus) {
   const env = assertSupabaseAdminEnv();
-  const filter = status ? `&status=eq.${encodeURIComponent(status)}` : "";
+  const filter = status ? `&status=eq.${encodeURIComponent(status)}` : "&status=neq.deleted";
   const res = await fetch(`${env.url}/rest/v1/photos?select=id&limit=1${filter}`, {
     headers: {
       apikey: env.serviceKey,
@@ -86,6 +86,10 @@ export async function countPhotos(status?: PhotoStatus) {
 
 export async function updatePhotoStatus(id: string, status: PhotoStatus) {
   return supabaseFetch(`/rest/v1/photos?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+}
+
+export async function deletePhoto(id: string) {
+  return supabaseFetch(`/rest/v1/photos?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function approvedPhotos(eventId: string, limit?: number, offset = 0) {

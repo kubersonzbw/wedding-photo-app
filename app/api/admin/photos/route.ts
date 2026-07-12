@@ -1,9 +1,12 @@
-import { countPhotos, listPhotos, removeObject, signedUrl, updatePhotoStatus } from "@/lib/supabase/admin";
+import { countPhotos, deletePhoto, listPhotos, removeObject, signedUrl, updatePhotoStatus } from "@/lib/supabase/admin";
 import { requireAdminUser } from "@/lib/supabase/server";
 
-const PHOTO_STATUSES = ["approved", "hidden", "deleted"] as const;
+const PHOTO_STATUSES = ["approved", "hidden"] as const;
 type PhotoStatus = typeof PHOTO_STATUSES[number];
+const ADMIN_ACTIONS = ["approved", "hidden", "deleted"] as const;
+type AdminAction = typeof ADMIN_ACTIONS[number];
 const ALLOWED_STATUSES = new Set<string>(PHOTO_STATUSES);
+const ALLOWED_ACTIONS = new Set<string>(ADMIN_ACTIONS);
 
 async function guard() { return Boolean(await requireAdminUser()); }
 
@@ -11,14 +14,17 @@ function isPhotoStatus(value: string): value is PhotoStatus {
   return ALLOWED_STATUSES.has(value);
 }
 
+function isAdminAction(value: string): value is AdminAction {
+  return ALLOWED_ACTIONS.has(value);
+}
+
 async function adminCounts() {
-  const [all, approved, hidden, deleted] = await Promise.all([
+  const [all, approved, hidden] = await Promise.all([
     countPhotos(),
     countPhotos("approved"),
     countPhotos("hidden"),
-    countPhotos("deleted"),
   ]);
-  return { all, approved, hidden, deleted };
+  return { all, approved, hidden };
 }
 
 export async function GET(request: Request) {
@@ -46,10 +52,14 @@ export async function PATCH(request: Request) {
   try {
     const { id, status, storagePath } = await request.json();
     const nextStatus = String(status ?? "");
-    if (!id || !isPhotoStatus(nextStatus)) {
+    if (!id || !isAdminAction(nextStatus)) {
       return Response.json({ error: "Nieprawidłowa akcja." }, { status: 400 });
     }
-    if (nextStatus === "deleted" && storagePath) await removeObject(String(storagePath)).catch(() => null);
+    if (nextStatus === "deleted") {
+      if (storagePath) await removeObject(String(storagePath)).catch(() => null);
+      await deletePhoto(String(id));
+      return Response.json({ ok: true });
+    }
     await updatePhotoStatus(String(id), nextStatus);
     return Response.json({ ok: true });
   } catch {

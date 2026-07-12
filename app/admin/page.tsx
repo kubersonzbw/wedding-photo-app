@@ -4,7 +4,8 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import WeddingShell from "@/components/WeddingShell";
 
-type PhotoStatus = "approved" | "hidden" | "deleted";
+type PhotoStatus = "approved" | "hidden";
+type AdminAction = PhotoStatus | "deleted";
 type FilterStatus = "all" | PhotoStatus;
 type PhotoCounts = Record<FilterStatus, number>;
 type Photo = {
@@ -22,14 +23,12 @@ const FILTERS: Array<{ value: FilterStatus; label: string }> = [
   { value: "all", label: "Wszystkie" },
   { value: "approved", label: "Widoczne" },
   { value: "hidden", label: "Ukryte" },
-  { value: "deleted", label: "Usunięte" },
 ];
-const EMPTY_COUNTS: PhotoCounts = { all: 0, approved: 0, hidden: 0, deleted: 0 };
+const EMPTY_COUNTS: PhotoCounts = { all: 0, approved: 0, hidden: 0 };
 
 function statusLabel(status: PhotoStatus) {
   if (status === "approved") return "Widoczne";
-  if (status === "hidden") return "Ukryte";
-  return "Usunięte";
+  return "Ukryte";
 }
 
 function formatDate(value: string) {
@@ -45,7 +44,7 @@ export default function AdminPage() {
   const [status, setStatus] = useState<FilterStatus>("all");
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [counts, setCounts] = useState<PhotoCounts>(EMPTY_COUNTS);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [actionId, setActionId] = useState("");
   const [error, setError] = useState("");
@@ -67,22 +66,6 @@ export default function AdminPage() {
       setCounts({ ...EMPTY_COUNTS, ...(data.counts ?? {}) });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Nie udało się pobrać zdjęć.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function checkSession() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/session", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) {
-        setSessionEmail("");
-        return;
-      }
-      setSessionEmail(data.user?.email ?? "");
-      await load(status);
     } finally {
       setLoading(false);
     }
@@ -118,8 +101,8 @@ export default function AdminPage() {
     setPassword("");
   }
 
-  async function act(photo: Photo, nextStatus: PhotoStatus) {
-    if (nextStatus === "deleted" && !window.confirm("Usunąć to zdjęcie ze Storage i ukryć w panelu?")) return;
+  async function act(photo: Photo, nextStatus: AdminAction) {
+    if (nextStatus === "deleted" && !window.confirm("Usunąć to zdjęcie na stałe z galerii i ze Storage?")) return;
     setActionId(photo.id);
     setError("");
     try {
@@ -137,14 +120,6 @@ export default function AdminPage() {
       setActionId("");
     }
   }
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void checkSession();
-    }, 0);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (!sessionEmail) return;
@@ -182,7 +157,6 @@ export default function AdminPage() {
         <div>
           <p className="admin-eyebrow">Panel admina</p>
           <h1>Zarządzanie zdjęciami</h1>
-          <p className="admin-muted">Zalogowano jako {sessionEmail}</p>
         </div>
         <button className="btn btn-ghost admin-logout" onClick={logout}>Wyloguj</button>
       </header>
@@ -210,7 +184,7 @@ export default function AdminPage() {
             <div className="admin-actions">
               <button onClick={() => act(photo, "approved")} disabled={actionId === photo.id || photo.status === "approved"}>Pokaż</button>
               <button onClick={() => act(photo, "hidden")} disabled={actionId === photo.id || photo.status === "hidden"}>Ukryj</button>
-              <button className="danger" onClick={() => act(photo, "deleted")} disabled={actionId === photo.id || photo.status === "deleted"}>Usuń</button>
+              <button className="danger" onClick={() => act(photo, "deleted")} disabled={actionId === photo.id}>Usuń</button>
             </div>
           </div>
         </article>)}
