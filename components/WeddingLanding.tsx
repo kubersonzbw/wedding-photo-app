@@ -1,32 +1,5 @@
 import Link from "next/link";
 
-function BotanicalCorner({ position }: { position: "top-left" | "top-right" | "bottom-left" | "bottom-right" }) {
-  return <span className={`landing-wheat landing-wheat-${position}`} aria-hidden="true" />;
-}
-
-function Sparkles() {
-  return <div className="landing-sparkles" aria-hidden="true">
-    <span className="sparkle sparkle-one" />
-    <span className="sparkle sparkle-two" />
-    <span className="sparkle-dot sparkle-three" />
-    <span className="sparkle sparkle-four" />
-    <span className="sparkle-dot sparkle-five" />
-    <span className="sparkle-dot sparkle-six" />
-  </div>;
-}
-
-function SmokeDecorations() {
-  return <div className="landing-smoke-layer" aria-hidden="true">
-    <span className="landing-smoke landing-smoke-top-right" />
-    <span className="landing-smoke landing-smoke-description-left" />
-    <span className="landing-smoke landing-smoke-description-right" />
-    <span className="landing-smoke landing-smoke-bottom-left" />
-    <span className="landing-smoke-plus landing-smoke-plus-one" />
-    <span className="landing-smoke-plus landing-smoke-plus-two" />
-    <span className="landing-smoke-dot landing-smoke-dot-one" />
-  </div>;
-}
-
 function WeddingRingsIcon() {
   return <svg className="landing-rings" viewBox="0 0 54 34" aria-hidden="true">
     <path d="M29.3 13.2c0-4.7-5.7-6.9-9-3.3-3.3-3.6-9-1.4-9 3.3 0 6 9 12.1 9 12.1s9-6.1 9-12.1Z" />
@@ -51,13 +24,6 @@ function ImagesIcon() {
 export default function WeddingLanding({ uploadHref, galleryHref }: { uploadHref: string; galleryHref: string }) {
   return <main className="landing-screen">
     <div className="landing-frame">
-      <BotanicalCorner position="top-left" />
-      <BotanicalCorner position="top-right" />
-      <BotanicalCorner position="bottom-left" />
-      <BotanicalCorner position="bottom-right" />
-      <Sparkles />
-      <SmokeDecorations />
-
       <section className="landing-content" aria-label="Natalia i Robert - wspólna galeria weselna">
         <div className="landing-rings-wrap"><WeddingRingsIcon /></div>
         <p className="landing-overline">Natalia &amp; Robert</p>

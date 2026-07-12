@@ -20,8 +20,6 @@ export default function WeddingHero({
   actionLabel?: string;
 }) {
   return <section className="wedding-hero">
-    <div className="hero-leaf hero-leaf-left" aria-hidden="true">⌇</div>
-    <div className="hero-leaf hero-leaf-right" aria-hidden="true">⌇</div>
     <div className="rings-mark" aria-hidden="true">♡</div>
     <div className="wedding-badge"><span />{eyebrow}</div>
     <h1>{title}</h1>

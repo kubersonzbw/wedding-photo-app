@@ -80,7 +80,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     </div>
     {!initialCode && <div className="floating-field"><label htmlFor="accessCode">Kod weselny</label><input id="accessCode" name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod weselny" /></div>}
     <UploadDropzone fileRef={fileRef} fileCount={selectedFiles.length} onChange={handleFilesChange} />
-    <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</span><b aria-hidden="true">❤</b></label>
+    <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</span><span className="consent-heart-icon" aria-hidden="true" /></label>
     <button disabled={loading || locked} className="btn btn-primary cta-button"><span className="cta-camera-icon" aria-hidden="true" /><span className="cta-button-label">{loading ? "Dodajemy zdjęcia…" : "Dodaj zdjęcia"}</span></button>
     <Link className="text-link" href={galleryUrl}>Zobacz galerię zdjęć</Link>
     {error && <p className="error" role="alert">

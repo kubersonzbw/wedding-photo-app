@@ -81,14 +81,14 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
 
   return <WeddingShell wide screen>
     <header className="mobile-topbar">
-      <Link href={uploadHref} aria-label="Dodaj zdjęcia">☰</Link>
+      <Link href={uploadHref} aria-label="Wróć do dodawania zdjęć">‹</Link>
       <span>NATALIA &amp; ROBERT</span>
       <span className="mobile-topbar-action" aria-hidden="true">
         <span className="mobile-topbar-heart-icon mobile-topbar-heart-icon-filled" />
       </span>
     </header>
     <section className="gallery-intro"><h1>Galeria wspomnień</h1><p>Zdjęcia dodane przez naszych gości</p><Link className="btn btn-primary gallery-add-button" href={uploadHref}><span className="cta-camera-icon" aria-hidden="true" /><span className="gallery-add-label">Dodaj zdjęcia</span></Link></section>
-    {!initialCode && <section className="gallery-code-card"><div className="floating-field"><label htmlFor="guestCode">Kod weselny</label><input id="guestCode" value={draftCode} onChange={(e)=>handleCodeChange(e.target.value)} placeholder="Wpisz kod weselny" /></div><button className="btn btn-ghost" onClick={()=>load()} disabled={loading || !draftCode.trim()}>{loading ? "Przygotowujemy galerię…" : "Pokaż galerię"}</button></section>}
+    {!initialCode && <section className="gallery-code-card"><div className="floating-field"><label htmlFor="guestCode">Kod weselny</label><input id="guestCode" value={draftCode} onChange={(e)=>handleCodeChange(e.target.value)} placeholder="Wpisz kod weselny" /></div><button className="btn btn-ghost" onClick={()=>load()} disabled={loading || !draftCode.trim()}><span className="gallery-code-icon" aria-hidden="true" /><span className="gallery-code-label">{loading ? "Przygotowujemy galerię…" : "Pokaż galerię"}</span></button></section>}
     {loading && <LoadingGalleryState />}
     {!loading && error && <ErrorState title={errorTitle} description={errorDescription} onRefresh={() => load()} />}
     {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={setActiveIndex} />}
