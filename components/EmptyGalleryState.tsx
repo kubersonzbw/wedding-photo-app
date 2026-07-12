@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export default function EmptyGalleryState({ href }: { href: string }) {
-  return <section className="memory-card empty-gallery-state">
+  return <section className="empty-gallery-state">
     <div className="empty-icon empty-camera-heart" aria-hidden="true">
       <svg viewBox="0 12 96 60">
         <path d="M20 25.5h14.2l4.2-7.5h19.2l4.2 7.5H76c4.4 0 8 3.6 8 8v24c0 4.4-3.6 8-8 8H20c-4.4 0-8-3.6-8-8v-24c0-4.4 3.6-8 8-8Z" />

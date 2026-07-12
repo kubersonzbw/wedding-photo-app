@@ -1,5 +1,5 @@
 export default function ErrorState({ title = "Coś poszło nie tak", description = "Spróbuj ponownie później", onRefresh }: { title?: string; description?: string; onRefresh?: () => void }) {
-  return <section className="memory-card error-state" role="alert">
+  return <section className="error-state" role="alert">
     <div className="error-icon error-broken-heart-icon" aria-hidden="true" />
     <h2>{title}</h2>
     <p>{description}</p>
