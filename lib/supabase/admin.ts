@@ -64,10 +64,21 @@ function encodeStoragePath(path: string) {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-export async function uploadObject(path: string, file: Blob, contentType = "application/octet-stream") {
+export async function createSignedUploadUrl(path: string) {
+  const data = await supabaseFetch(`/storage/v1/object/upload/sign/wedding-photos/${encodeStoragePath(path)}`, { method: "POST", body: JSON.stringify({}) });
   const env = assertSupabaseAdminEnv();
-  const res = await fetch(`${env.url}/storage/v1/object/wedding-photos/${encodeStoragePath(path)}`, { method: "POST", headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}`, "Content-Type": contentType, "x-upsert": "false" }, body: file });
+  const signedUrl = `${env.url}/storage/v1${data.url}`;
+  const token = new URL(signedUrl).searchParams.get("token");
+  if (!token) throw new Error("Missing signed upload token.");
+  return { signedUrl, token, path };
+}
+
+export async function objectExists(path: string) {
+  const env = assertSupabaseAdminEnv();
+  const res = await fetch(`${env.url}/storage/v1/object/wedding-photos/${encodeStoragePath(path)}`, { method: "HEAD", headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` }, cache: "no-store" });
+  if (res.status === 404) return false;
   if (!res.ok) throw new Error(await res.text());
+  return true;
 }
 
 export async function downloadObject(path: string) {

@@ -4,7 +4,29 @@ import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { galleryHref } from "@/lib/events/config";
 import { validatePhotoList } from "@/lib/photos/validation";
+import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import UploadDropzone from "@/components/UploadDropzone";
+
+type UploadStartResponse = {
+  guestId: string;
+  uploads: Array<{
+    photoId: string;
+    storagePath: string;
+    token: string;
+    originalFilename: string;
+    mimeType: string;
+    sizeBytes: number;
+  }>;
+};
+
+async function readApiResponse<T>(res: Response): Promise<T & { error?: string }> {
+  const responseText = await res.text();
+  try {
+    return (responseText ? JSON.parse(responseText) : {}) as T & { error?: string };
+  } catch {
+    return { error: responseText } as T & { error?: string };
+  }
+}
 
 export default function UploadForm({ slug, initialCode = "", locked = false }: { slug: string; initialCode?: string; locked?: boolean }) {
   const [guestName, setGuestName] = useState("");
@@ -30,12 +52,47 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       if (!consent) throw new Error("Zaznacz zgodę, aby dodać zdjęcia do wspólnej galerii.");
       const validation = validatePhotoList(selectedFiles);
       if (validation) throw new Error(validation);
-      const upload = new FormData();
-      upload.set("slug", slug); upload.set("accessCode", accessCode); upload.set("guestName", guestName);
-      for (const file of selectedFiles) upload.append("photos", file);
-      const res = await fetch("/api/upload", { method: "POST", body: upload });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Nie udało się dodać zdjęć. Spróbuj ponownie.");
+      const startRes = await fetch("/api/upload/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug,
+          accessCode,
+          guestName,
+          files: selectedFiles.map((file) => ({ name: file.name, type: file.type, size: file.size })),
+        }),
+      });
+      const startData = await readApiResponse<UploadStartResponse>(startRes);
+      if (!startRes.ok) throw new Error(startData.error ?? "Nie udało się przygotować uploadu.");
+
+      const supabase = createBrowserSupabaseClient();
+      for (const [index, upload] of startData.uploads.entries()) {
+        const file = selectedFiles[index];
+        const { error: uploadError } = await supabase.storage
+          .from("wedding-photos")
+          .uploadToSignedUrl(upload.storagePath, upload.token, file, { contentType: file.type });
+
+        if (uploadError) throw new Error(uploadError.message || "Nie udało się przesłać zdjęcia do galerii.");
+      }
+
+      const completeRes = await fetch("/api/upload/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug,
+          accessCode,
+          guestId: startData.guestId,
+          uploads: startData.uploads.map((upload) => ({
+            photoId: upload.photoId,
+            storagePath: upload.storagePath,
+            name: upload.originalFilename,
+            type: upload.mimeType,
+            size: upload.sizeBytes,
+          })),
+        }),
+      });
+      const completeData = await readApiResponse<{ count: number }>(completeRes);
+      if (!completeRes.ok) throw new Error(completeData.error ?? "Zdjęcia zostały przesłane, ale nie udało się zapisać ich w galerii.");
       setSuccess(true);
       setGuestName("");
       setConsent(false);
