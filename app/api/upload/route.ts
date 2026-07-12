@@ -3,6 +3,12 @@ import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { validatePhotoList } from "@/lib/photos/validation";
 
+const EXTENSION_BY_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
 export async function POST(request: Request) {
   try {
     const form = await request.formData();
@@ -20,9 +26,10 @@ export async function POST(request: Request) {
     const uploaded = [];
     for (const file of files) {
       const photoId = crypto.randomUUID();
-      const storagePath = `${event.id}/${guest.id}/${photoId}.jpg`;
-      await uploadObject(storagePath, file);
-      uploaded.push(await insertPhoto({ id: photoId, event_id: event.id, guest_id: guest.id, storage_path: storagePath, original_filename: file.name, mime_type: "image/jpeg", size_bytes: file.size, status: "approved" }));
+      const extension = EXTENSION_BY_TYPE[file.type] ?? "jpg";
+      const storagePath = `${event.id}/${guest.id}/${photoId}.${extension}`;
+      await uploadObject(storagePath, file, file.type);
+      uploaded.push(await insertPhoto({ id: photoId, event_id: event.id, guest_id: guest.id, storage_path: storagePath, original_filename: file.name, mime_type: file.type, size_bytes: file.size, status: "approved" }));
     }
     return Response.json({ ok: true, count: uploaded.length });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Błąd uploadu." }, { status: 500 }); }

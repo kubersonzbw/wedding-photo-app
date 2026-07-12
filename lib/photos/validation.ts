@@ -1,5 +1,5 @@
 export const MAX_FILES = 10;
-export const MAX_FILE_SIZE = 10 * 1024 * 1024;
+export const MAX_FILE_SIZE = 25 * 1024 * 1024;
 export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export function validateImageFile(file: File): string | null {
@@ -7,7 +7,7 @@ export function validateImageFile(file: File): string | null {
     return `Nieobsługiwany typ pliku: ${file.name}`;
   }
   if (file.size > MAX_FILE_SIZE) {
-    return `Plik ${file.name} przekracza limit 10 MB.`;
+    return `Plik ${file.name} przekracza limit 25 MB.`;
   }
   return null;
 }

@@ -1,17 +1,13 @@
-import Link from "next/link";
-import WeddingHero from "@/components/WeddingHero";
-import WeddingShell from "@/components/WeddingShell";
+import WeddingLanding from "@/components/WeddingLanding";
 import { DEFAULT_EVENT_SLUG, galleryHref } from "@/lib/events/config";
 
-export default function Home() {
-  const slug = DEFAULT_EVENT_SLUG;
-  return <WeddingShell centered>
-    <section className="home-card invite-screen">
-      <WeddingHero eyebrow="NATALIA & ROBERT" subtitle="Wspólna galeria weselna" description="Podziel się zdjęciami z naszego dnia i twórzmy razem piękne wspomnienia." />
-      <div className="home-actions">
-        <Link className="btn btn-primary" href={`/wedding/${slug}`}><span aria-hidden="true">▣</span>Dodaj zdjęcia</Link>
-        <Link className="btn btn-ghost" href={galleryHref(slug)}><span aria-hidden="true">♡</span>Zobacz galerię</Link>
-      </div>
-    </section>
-  </WeddingShell>;
+export default async function Home({ searchParams }: { searchParams: Promise<{ code?: string | string[]; slug?: string | string[] }> }) {
+  const params = await searchParams;
+  const codeParam = params.code;
+  const slugParam = params.slug;
+  const code = Array.isArray(codeParam) ? codeParam[0] ?? "" : codeParam ?? "";
+  const slug = Array.isArray(slugParam) ? slugParam[0] ?? DEFAULT_EVENT_SLUG : slugParam ?? DEFAULT_EVENT_SLUG;
+  const query = code ? `?code=${encodeURIComponent(code)}` : "";
+
+  return <WeddingLanding uploadHref={`/wedding/${encodeURIComponent(slug)}${query}`} galleryHref={galleryHref(slug, code)} />;
 }

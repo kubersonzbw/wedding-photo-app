@@ -42,22 +42,48 @@ export async function updatePhotoStatus(id: string, status: "approved" | "hidden
   return supabaseFetch(`/rest/v1/photos?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) });
 }
 
-export async function approvedPhotos(eventId: string) {
-  return supabaseFetch(`/rest/v1/photos?event_id=eq.${eventId}&status=eq.approved&select=*,guests(name)&order=created_at.desc`);
+export async function approvedPhotos(eventId: string, limit?: number, offset = 0) {
+  const pagination = limit ? `&limit=${limit}&offset=${offset}` : "";
+  return supabaseFetch(`/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=*,guests(name)&order=created_at.desc${pagination}`);
 }
 
-export async function uploadObject(path: string, file: Blob) {
+export async function getApprovedPhoto(eventId: string, photoId: string) {
+  const rows = await supabaseFetch(`/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&id=eq.${encodeURIComponent(photoId)}&status=eq.approved&select=*`);
+  return rows?.[0] ?? null;
+}
+
+type ImageTransform = {
+  width?: number;
+  height?: number;
+  quality?: number;
+  resize?: "cover" | "contain" | "fill";
+  format?: "origin";
+};
+
+function encodeStoragePath(path: string) {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+export async function uploadObject(path: string, file: Blob, contentType = "application/octet-stream") {
   const env = assertSupabaseAdminEnv();
-  const res = await fetch(`${env.url}/storage/v1/object/wedding-photos/${path}`, { method: "POST", headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}`, "Content-Type": "image/jpeg", "x-upsert": "false" }, body: file });
+  const res = await fetch(`${env.url}/storage/v1/object/wedding-photos/${encodeStoragePath(path)}`, { method: "POST", headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}`, "Content-Type": contentType, "x-upsert": "false" }, body: file });
   if (!res.ok) throw new Error(await res.text());
+}
+
+export async function downloadObject(path: string) {
+  const env = assertSupabaseAdminEnv();
+  const res = await fetch(`${env.url}/storage/v1/object/wedding-photos/${encodeStoragePath(path)}`, { headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` }, cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  return res;
 }
 
 export async function removeObject(path: string) {
   await supabaseFetch("/storage/v1/object/wedding-photos", { method: "DELETE", body: JSON.stringify({ prefixes: [path] }) });
 }
 
-export async function signedUrl(path: string, expiresIn = 300) {
-  const data = await supabaseFetch(`/storage/v1/object/sign/wedding-photos/${path}`, { method: "POST", body: JSON.stringify({ expiresIn }) });
+export async function signedUrl(path: string, expiresIn = 300, transform?: ImageTransform) {
+  const body = transform ? { expiresIn, transform } : { expiresIn };
+  const data = await supabaseFetch(`/storage/v1/object/sign/wedding-photos/${encodeStoragePath(path)}`, { method: "POST", body: JSON.stringify(body) });
   const env = assertSupabaseAdminEnv();
   return `${env.url}/storage/v1${data.signedURL}`;
 }
