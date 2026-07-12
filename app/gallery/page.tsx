@@ -2,15 +2,13 @@ import { headers } from "next/headers";
 import ErrorState from "@/components/ErrorState";
 import GalleryClient from "@/components/GalleryClient";
 import WeddingShell from "@/components/WeddingShell";
-import { normalizeEventDomain } from "@/lib/events/domain";
-import { getEventByDomain } from "@/lib/supabase/admin";
+import { resolveEventByHost } from "@/lib/events/resolve";
 
 export default async function GalleryPage({ searchParams }: { searchParams: Promise<{ code?: string | string[] }> }) {
   const codeParam = (await searchParams).code;
   const code = Array.isArray(codeParam) ? codeParam[0] ?? "" : codeParam ?? "";
   const headersList = await headers();
-  const domain = normalizeEventDomain(headersList.get("x-forwarded-host") ?? headersList.get("host"));
-  const event = domain ? await getEventByDomain(domain).catch(() => null) : null;
+  const event = await resolveEventByHost(headersList.get("x-forwarded-host") ?? headersList.get("host"));
 
   if (event?.slug) return <GalleryClient initialSlug={event.slug} initialCode={code} />;
 

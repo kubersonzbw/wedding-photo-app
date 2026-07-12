@@ -8,3 +8,7 @@ export function normalizeEventDomain(host: string | null) {
 
   return domain || null;
 }
+
+export function isLocalDevelopmentDomain(domain: string) {
+  return ["localhost", "127.0.0.1", "0.0.0.0"].includes(domain);
+}

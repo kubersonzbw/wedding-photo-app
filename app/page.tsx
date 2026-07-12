@@ -2,9 +2,8 @@ import { headers } from "next/headers";
 import ErrorState from "@/components/ErrorState";
 import WeddingLanding from "@/components/WeddingLanding";
 import WeddingShell from "@/components/WeddingShell";
-import { normalizeEventDomain } from "@/lib/events/domain";
 import { galleryHref } from "@/lib/events/config";
-import { getEventByDomain } from "@/lib/supabase/admin";
+import { resolveEventByHost } from "@/lib/events/resolve";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ code?: string | string[]; slug?: string | string[] }> }) {
   const params = await searchParams;
@@ -14,8 +13,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
   let slug = Array.isArray(slugParam) ? slugParam[0] ?? "" : slugParam ?? "";
   if (!slug) {
     const headersList = await headers();
-    const domain = normalizeEventDomain(headersList.get("x-forwarded-host") ?? headersList.get("host"));
-    const event = domain ? await getEventByDomain(domain).catch(() => null) : null;
+    const event = await resolveEventByHost(headersList.get("x-forwarded-host") ?? headersList.get("host"));
     slug = event?.slug ?? "";
   }
 

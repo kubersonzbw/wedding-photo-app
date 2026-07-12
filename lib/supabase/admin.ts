@@ -28,6 +28,11 @@ export async function getEventByDomain(domain: string) {
   return rows?.[0] ?? null;
 }
 
+export async function getOnlyEvent() {
+  const rows = await supabaseFetch("/rest/v1/events?select=*&order=created_at.asc&limit=2");
+  return Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+}
+
 export async function insertGuest(eventId: string, name: string) {
   const rows = await supabaseFetch("/rest/v1/guests?select=*", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ event_id: eventId, name }) });
   return rows[0];
