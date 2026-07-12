@@ -23,7 +23,13 @@ const montserrat = Montserrat({
   variable: "--font-montserrat",
 });
 
-export const metadata: Metadata = { title: "Natalia & Robert — Galeria weselna", description: "Prywatna aplikacja do dodawania, moderowania i oglądania zdjęć z wesela Natalii i Roberta." };
+export const metadata: Metadata = {
+  title: "Natalia & Robert — Galeria weselna",
+  description: "Prywatna aplikacja do dodawania, moderowania i oglądania zdjęć z wesela Natalii i Roberta.",
+  icons: {
+    icon: "/icon.svg",
+  },
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="pl" className={`${playfair.variable} ${inter.variable} ${montserrat.variable}`}><body>{children}</body></html>;
