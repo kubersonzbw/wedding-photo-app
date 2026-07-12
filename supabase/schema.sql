@@ -3,6 +3,7 @@ create extension if not exists "pgcrypto";
 create table public.events (
   id uuid primary key default gen_random_uuid(),
   slug text unique not null,
+  domain text,
   title text not null,
   access_code_hash text not null,
   gallery_code_hash text not null,
@@ -33,6 +34,7 @@ create index photos_event_id_idx on public.photos(event_id);
 create index photos_status_idx on public.photos(status);
 create index photos_created_at_idx on public.photos(created_at desc);
 create index guests_event_id_idx on public.guests(event_id);
+create unique index events_domain_unique_idx on public.events(domain) where domain is not null;
 
 alter table public.events enable row level security;
 alter table public.guests enable row level security;

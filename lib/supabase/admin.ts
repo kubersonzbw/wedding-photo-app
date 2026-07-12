@@ -23,6 +23,11 @@ export async function getEventBySlug(slug: string) {
   return rows?.[0] ?? null;
 }
 
+export async function getEventByDomain(domain: string) {
+  const rows = await supabaseFetch(`/rest/v1/events?domain=eq.${encodeURIComponent(domain)}&select=*`);
+  return rows?.[0] ?? null;
+}
+
 export async function insertGuest(eventId: string, name: string) {
   const rows = await supabaseFetch("/rest/v1/guests?select=*", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ event_id: eventId, name }) });
   return rows[0];

@@ -8,7 +8,6 @@ import LoadingGalleryState from "@/components/LoadingGalleryState";
 import PhotoLightbox from "@/components/PhotoLightbox";
 import WeddingShell from "@/components/WeddingShell";
 
-const DEFAULT_SLUG = process.env.NEXT_PUBLIC_DEFAULT_EVENT_SLUG ?? "robert-natalia";
 const PAGE_SIZE = 30;
 const PULL_REFRESH_THRESHOLD = 68;
 const PULL_REFRESH_MAX = 88;
@@ -31,7 +30,7 @@ function mergeUniquePhotos(current: Photo[], next: Photo[]) {
   })];
 }
 
-export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode = "" }: { initialSlug?: string; initialCode?: string }) {
+export default function GalleryClient({ initialSlug, initialCode = "" }: { initialSlug: string; initialCode?: string }) {
   const [slug] = useState(initialSlug);
   const [draftCode, setDraftCode] = useState(initialCode);
   const [verifiedCode, setVerifiedCode] = useState("");

@@ -18,9 +18,11 @@ export default async function WeddingPage({ params, searchParams }: { params: Pr
       locked = false;
     }
   }
+  const landingQuery = new URLSearchParams({ slug });
+  if (code) landingQuery.set("code", code);
   return <WeddingShell screen>
     <header className="mobile-topbar">
-      <Link href="/" aria-label="Wróć">‹</Link><span>NATALIA & ROBERT</span><Link className="mobile-topbar-heart-link" href={galleryHref(slug, code || undefined)} aria-label="Galeria">
+      <Link href={`/?${landingQuery.toString()}`} aria-label="Wróć">‹</Link><span>NATALIA & ROBERT</span><Link className="mobile-topbar-heart-link" href={galleryHref(slug, code || undefined)} aria-label="Galeria">
         <span className="mobile-topbar-heart-icon mobile-topbar-heart-icon-outline" aria-hidden="true" />
       </Link>
     </header>

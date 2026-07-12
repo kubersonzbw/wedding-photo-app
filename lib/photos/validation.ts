@@ -10,23 +10,23 @@ export type PhotoFileInfo = {
 
 export function validateImageFile(file: File): string | null {
   if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
-    return `Nieobsługiwany typ pliku: ${file.name}`;
+    return "Nieobsługiwany typ pliku.";
   }
   if (file.size > MAX_FILE_SIZE) {
-    return `Plik ${file.name} przekracza limit 25 MB.`;
+    return "To zdjęcie jest za duże. Maksymalny rozmiar to 25 MB.";
   }
   return null;
 }
 
 export function validateImageFileInfo(file: PhotoFileInfo): string | null {
   if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
-    return `Nieobsługiwany typ pliku: ${file.name}`;
+    return "Nieobsługiwany typ pliku.";
   }
   if (!Number.isFinite(file.size) || file.size <= 0) {
     return `Plik ${file.name} jest pusty albo uszkodzony.`;
   }
   if (file.size > MAX_FILE_SIZE) {
-    return `Plik ${file.name} przekracza limit 25 MB.`;
+    return "To zdjęcie jest za duże. Maksymalny rozmiar to 25 MB.";
   }
   return null;
 }
