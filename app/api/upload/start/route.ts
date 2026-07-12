@@ -1,4 +1,4 @@
-import { createSignedUploadUrl, getEventBySlug, insertGuest } from "@/lib/supabase/admin";
+import { createSignedUploadUrl, deleteGuest, getEventBySlug, insertGuest } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
@@ -43,24 +43,29 @@ export async function POST(request: Request) {
     if (!event || !verifyGuestCode(code, event)) return Response.json({ error: "Niepoprawny kod weselny." }, { status: 401 });
 
     const guest = await insertGuest(event.id, name);
-    const uploads = await Promise.all(files.map(async (file) => {
-      const photoId = crypto.randomUUID();
-      const extension = EXTENSION_BY_TYPE[file.type] ?? "jpg";
-      const storagePath = `${event.id}/${guest.id}/${photoId}.${extension}`;
-      const signed = await createSignedUploadUrl(storagePath);
+    try {
+      const uploads = await Promise.all(files.map(async (file) => {
+        const photoId = crypto.randomUUID();
+        const extension = EXTENSION_BY_TYPE[file.type] ?? "jpg";
+        const storagePath = `${event.id}/${guest.id}/${photoId}.${extension}`;
+        const signed = await createSignedUploadUrl(storagePath);
 
-      return {
-        photoId,
-        storagePath,
-        token: signed.token,
-        signedUrl: signed.signedUrl,
-        originalFilename: file.name,
-        mimeType: file.type,
-        sizeBytes: file.size,
-      };
-    }));
+        return {
+          photoId,
+          storagePath,
+          token: signed.token,
+          signedUrl: signed.signedUrl,
+          originalFilename: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+        };
+      }));
 
-    return Response.json({ ok: true, guestId: guest.id, uploads });
+      return Response.json({ ok: true, guestId: guest.id, uploads });
+    } catch (error) {
+      await deleteGuest(guest.id).catch(() => null);
+      throw error;
+    }
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Nie udało się przygotować uploadu." }, { status: 500 });
   }

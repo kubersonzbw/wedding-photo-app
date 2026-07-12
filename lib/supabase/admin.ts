@@ -33,6 +33,24 @@ export async function insertPhoto(photo: Record<string, unknown>) {
   return rows[0];
 }
 
+export async function insertPhotos(photos: Array<Record<string, unknown>>) {
+  return supabaseFetch("/rest/v1/photos?select=*", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(photos) });
+}
+
+export async function photoExistsByStoragePath(path: string) {
+  const rows = await supabaseFetch(`/rest/v1/photos?storage_path=eq.${encodeURIComponent(path)}&select=id&limit=1`);
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+export async function guestHasPhotos(guestId: string) {
+  const rows = await supabaseFetch(`/rest/v1/photos?guest_id=eq.${encodeURIComponent(guestId)}&select=id&limit=1`);
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+export async function deleteGuest(guestId: string) {
+  return supabaseFetch(`/rest/v1/guests?id=eq.${encodeURIComponent(guestId)}`, { method: "DELETE" });
+}
+
 export async function listPhotos(status?: string) {
   const filter = status && status !== "all" ? `&status=eq.${encodeURIComponent(status)}` : "";
   return supabaseFetch(`/rest/v1/photos?select=*,guests(name),events(slug,title)&order=created_at.desc${filter}`);
@@ -78,6 +96,11 @@ export async function objectExists(path: string) {
 
 export async function removeObject(path: string) {
   await supabaseFetch("/storage/v1/object/wedding-photos", { method: "DELETE", body: JSON.stringify({ prefixes: [path] }) });
+}
+
+export async function removeObjects(paths: string[]) {
+  if (paths.length === 0) return;
+  await supabaseFetch("/storage/v1/object/wedding-photos", { method: "DELETE", body: JSON.stringify({ prefixes: paths }) });
 }
 
 export async function signedUrl(path: string, expiresIn = 300, transform?: ImageTransform) {

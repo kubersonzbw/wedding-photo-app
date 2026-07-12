@@ -14,6 +14,14 @@ const PULL_REFRESH_THRESHOLD = 68;
 const PULL_REFRESH_MAX = 88;
 type Photo = { id: string; url: string; thumbnailUrl?: string; guestName?: string; createdAt: string };
 
+function photoCountLabel(count: number) {
+  if (count === 1) return "1 zdjęcie";
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return `${count} zdjęcia`;
+  return `${count} zdjęć`;
+}
+
 export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode = "" }: { initialSlug?: string; initialCode?: string }) {
   const [slug] = useState(initialSlug);
   const [draftCode, setDraftCode] = useState(initialCode);
@@ -140,7 +148,7 @@ export default function GalleryClient({ initialSlug = DEFAULT_SLUG, initialCode 
             <span className="mobile-topbar-heart-icon mobile-topbar-heart-icon-filled" />
           </span>
         </header>
-        <section className="gallery-intro"><h1>Galeria wspomnień</h1><p>Zdjęcia dodane przez naszych gości</p><Link className="btn btn-primary gallery-add-button" href={uploadHref}><span className="cta-camera-icon" aria-hidden="true" /><span className="gallery-add-label">Dodaj zdjęcia</span></Link></section>
+        <section className="gallery-intro"><h1>Galeria wspomnień</h1><p>Zdjęcia dodane przez naszych gości</p>{hasRequested && photos.length > 0 && <span className="gallery-photo-count">{photoCountLabel(photos.length)} od gości</span>}<Link className="btn btn-primary gallery-add-button" href={uploadHref}><span className="cta-camera-icon" aria-hidden="true" /><span className="gallery-add-label">Dodaj zdjęcia</span></Link></section>
         {!initialCode && <section className="gallery-code-card"><div className="floating-field"><label htmlFor="guestCode">Kod weselny</label><input id="guestCode" value={draftCode} onChange={(e)=>handleCodeChange(e.target.value)} placeholder="Wpisz kod weselny" /></div><button className="btn btn-ghost" onClick={()=>load()} disabled={loading || !draftCode.trim()}><span className="gallery-code-icon" aria-hidden="true" /><span className="gallery-code-label">{loading ? "Przygotowujemy galerię…" : "Pokaż galerię"}</span></button></section>}
         {loading && <LoadingGalleryState showCopy={Boolean(initialCode)} />}
         {!loading && error && <ErrorState title={errorTitle} description={errorDescription} onRefresh={invalidCodeError ? undefined : () => load()} />}

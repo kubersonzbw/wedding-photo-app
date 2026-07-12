@@ -1,4 +1,4 @@
-import { getEventBySlug, insertPhoto, objectExists } from "@/lib/supabase/admin";
+import { getEventBySlug, insertPhotos, objectExists } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
 
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const event = await getEventBySlug(String(slug));
     if (!event || !verifyGuestCode(code, event)) return Response.json({ error: "Niepoprawny kod weselny." }, { status: 401 });
 
-    const inserted = [];
+    const photoRows = [];
     for (const upload of uploads) {
       if (!upload.photoId || !upload.storagePath.startsWith(`${event.id}/${guestId}/`)) {
         return Response.json({ error: "Nieprawidłowe dane przesłanego zdjęcia." }, { status: 400 });
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
         return Response.json({ error: "Nie udało się potwierdzić przesłanego zdjęcia." }, { status: 400 });
       }
 
-      inserted.push(await insertPhoto({
+      photoRows.push({
         id: upload.photoId,
         event_id: event.id,
         guest_id: guestId,
@@ -53,9 +53,10 @@ export async function POST(request: Request) {
         mime_type: upload.type,
         size_bytes: upload.size,
         status: "approved",
-      }));
+      });
     }
 
+    const inserted = await insertPhotos(photoRows);
     return Response.json({ ok: true, count: inserted.length });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Nie udało się zapisać zdjęć w galerii." }, { status: 500 });

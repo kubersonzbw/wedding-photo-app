@@ -71,11 +71,17 @@
 .person-input-icon svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 .wedding-shell-screen .upload-dropzone{min-height:188px;border:1.4px dashed rgba(235,146,148,.48);border-radius:28px;background:radial-gradient(circle at 50% 4%,rgba(255,255,255,.82),transparent 54%),radial-gradient(ellipse at 50% 100%,rgba(212,175,55,.08),transparent 54%),linear-gradient(180deg,rgba(255,248,244,.58),rgba(255,255,255,.36));box-shadow:inset 0 1px 0 rgba(255,255,255,.66),0 14px 30px rgba(132,94,68,.055)}
 .wedding-shell-screen .upload-dropzone-selected{border-style:solid;border-color:rgba(212,175,55,.58);background:radial-gradient(circle at 50% 5%,rgba(255,255,255,.88),transparent 54%),radial-gradient(ellipse at 50% 100%,rgba(212,175,55,.15),transparent 56%),linear-gradient(180deg,rgba(255,251,245,.68),rgba(255,255,255,.42));box-shadow:inset 0 1px 0 rgba(255,255,255,.72),0 15px 32px rgba(132,94,68,.07)}
+.wedding-shell-screen .upload-dropzone-loading{cursor:wait;border-color:rgba(212,175,55,.70);background:radial-gradient(circle at 50% 5%,rgba(255,255,255,.92),transparent 54%),radial-gradient(ellipse at 50% 100%,rgba(212,175,55,.19),transparent 58%),linear-gradient(180deg,rgba(255,251,245,.72),rgba(255,255,255,.46))}
 .upload-dropzone-icon{width:68px;height:68px;display:grid;place-items:center;position:relative;margin-bottom:3px;border-radius:999px;color:#b88b49;background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.72),rgba(246,201,197,.80));box-shadow:0 12px 24px rgba(218,116,120,.14),inset 0 1px 0 rgba(255,255,255,.60)}
 .upload-dropzone-selected .upload-dropzone-icon{color:#a97a18;background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.82),rgba(238,214,167,.82));box-shadow:0 12px 26px rgba(212,175,55,.14),inset 0 1px 0 rgba(255,255,255,.66)}
 .upload-dropzone-icon svg{display:none}
 .upload-dropzone-icon:before{content:"";width:32px;height:32px;display:block;background:currentColor;mask:url("/decor/photo-camera-svgrepo-com.svg") center/contain no-repeat}
+.upload-dropzone-icon:after{content:none}
+.upload-dropzone-loading .upload-dropzone-icon{color:#a97a18;background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.90),rgba(238,214,167,.86));box-shadow:0 13px 28px rgba(212,175,55,.16),inset 0 1px 0 rgba(255,255,255,.70)}
+.upload-dropzone-loading .upload-dropzone-icon:before{width:25px;height:25px;opacity:.48}
+.upload-dropzone-loading .upload-dropzone-icon:after{content:"";position:absolute;inset:8px;border-radius:999px;border:3px solid rgba(212,175,55,.20);border-top-color:#b88b49;border-right-color:#d4af37;box-shadow:0 0 13px rgba(212,175,55,.16);animation:pullRefreshSpin .72s linear infinite}
 .wedding-shell-screen .upload-dropzone strong{margin-top:4px;color:#3f2e29;font-size:14px;font-weight:800}
+.wedding-shell-screen .upload-dropzone-loading strong{color:#9d741e;letter-spacing:.045em;text-transform:uppercase}
 .wedding-shell-screen .upload-dropzone span:not(.upload-dropzone-icon){color:#8a7066;font-size:12px}
 .wedding-shell-screen .upload-dropzone small{color:#8f766b;font-size:11.5px}
 .wedding-shell-screen .consent-row{align-items:center;margin-top:2px;color:#554239;font-size:12.5px;line-height:1.35}
@@ -89,7 +95,7 @@
 .wedding-shell-screen .text-link{margin-top:2px;color:#8f6814;font-size:12px;font-weight:800;letter-spacing:.095em}
 .wedding-shell-screen .error{display:flex;align-items:flex-start;gap:9px;margin-top:-2px;padding:12px 15px;border-radius:16px;background:rgba(255,247,244,.72);border:1px solid rgba(229,141,145,.34);color:#96463f;font-size:13.5px;line-height:1.42;box-shadow:0 10px 22px rgba(132,94,68,.045),inset 0 1px 0 rgba(255,255,255,.50)}
 .wedding-shell-screen .upload-error-top{margin:-6px 0 2px}
-.error-broken-heart{width:20px;height:20px;flex:0 0 20px;margin-top:0;background:url("/decor/broken-heart.svg") center/contain no-repeat}
+.error-broken-heart{width:20px;height:20px;flex:0 0 20px;margin-top:0;color:#e58d91;fill:currentColor}
 .success-bloom{position:relative;background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.42),rgba(246,201,197,.82));box-shadow:0 12px 28px rgba(218,116,120,.13),inset 0 1px 0 rgba(255,255,255,.58)}
 .wedding-shell-screen .success-state{min-height:650px;align-content:center;gap:8px;padding:38px 26px 42px;background:transparent;border:0;border-radius:0;box-shadow:none;overflow:visible}
 .wedding-shell-screen .success-state:before{content:none}
@@ -105,6 +111,7 @@
 .wedding-shell-screen .gallery-intro{position:relative;z-index:2;margin:22px 0 20px}
 .wedding-shell-screen .gallery-intro h1{font-size:35px;line-height:.98;margin-bottom:9px;color:#3a2a25}
 .wedding-shell-screen .gallery-intro p{font-size:13px;color:#8a7066}
+.gallery-photo-count{display:block;margin-top:7px;color:#8f6814;font-family:var(--font-inter),Inter,sans-serif;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
 .wedding-shell-screen .gallery-intro .gallery-add-button{min-width:198px;min-height:50px;margin-top:17px;border-radius:999px;padding:0 26px;color:#f6f6f6;background-image:radial-gradient(circle at 50% 96%,rgba(255,241,186,.18) 0 1px,rgba(247,190,86,.08) 9px,transparent 22px),linear-gradient(180deg,rgba(255,255,255,.14) 0%,transparent 52%),linear-gradient(90deg,#f3a0a0 0%,#eb8589 100%);box-shadow:0 12px 24px rgba(218,116,120,.18),inset 0 1px 0 rgba(255,255,255,.24);font-family:var(--font-montserrat),Montserrat,var(--font-inter),Inter,sans-serif;font-size:13px;font-weight:800;letter-spacing:.07em}
 .wedding-shell-screen .success-state .btn-primary{background-image:linear-gradient(180deg,rgba(255,255,255,.15) 0%,transparent 52%),linear-gradient(90deg,#ee9299 0%,#e5848d 100%);box-shadow:0 11px 22px rgba(218,116,120,.16),inset 0 1px 0 rgba(255,255,255,.22)}
 .wedding-shell-screen .gallery-intro .gallery-add-button .cta-camera-icon{width:18px;height:18px}
@@ -137,4 +144,5 @@
 .wedding-shell-screen .error-state h2{margin:4px auto 0;font-family:var(--font-playfair),serif;font-size:28px;font-weight:500;line-height:1.04;letter-spacing:-.035em;color:#3a2a25}
 .wedding-shell-screen .error-state p{max-width:245px;margin:2px auto 8px;font-family:var(--font-inter),Inter,sans-serif;font-size:15px;line-height:1.5;color:#806b62}
 .wedding-shell-screen .error-state .btn-primary{min-height:48px;border-radius:999px;padding:0 24px;color:#f6f6f6;background-image:linear-gradient(180deg,rgba(255,255,255,.13) 0%,transparent 52%),linear-gradient(90deg,#ef9aa0 0%,#e88990 100%);box-shadow:0 12px 24px rgba(218,116,120,.18);font-family:var(--font-montserrat),Montserrat,var(--font-inter),Inter,sans-serif;font-size:12px;font-weight:800;letter-spacing:.07em}
-.wedding-shell-screen .error-state .error-broken-heart-icon{background:url("/decor/broken-heart.svg") 50% 50%/46px 46px no-repeat,radial-gradient(circle at 50% 45%,rgba(255,255,255,.60),rgba(246,201,197,.74));box-shadow:0 12px 26px rgba(218,116,120,.12),inset 0 1px 0 rgba(255,255,255,.58)}
+.wedding-shell-screen .error-state .error-broken-heart-icon{color:#e58d91;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.60),rgba(246,201,197,.74));box-shadow:0 12px 26px rgba(218,116,120,.12),inset 0 1px 0 rgba(255,255,255,.58)}
+.wedding-shell-screen .error-state .error-broken-heart-icon svg{width:46px;height:46px;fill:currentColor}
