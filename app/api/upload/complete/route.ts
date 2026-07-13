@@ -9,6 +9,14 @@ type CompletedUpload = PhotoFileInfo & {
   storagePath: string;
 };
 
+class UploadCompleteError extends Error {
+  constructor(message: string, public status = 400) {
+    super(message);
+  }
+}
+
+const COMPLETE_CONCURRENCY = Number(process.env.UPLOAD_COMPLETE_CONCURRENCY ?? 5);
+
 function normalizeUploads(value: unknown): CompletedUpload[] {
   if (!Array.isArray(value)) return [];
   return value.map((file) => {
@@ -21,6 +29,19 @@ function normalizeUploads(value: unknown): CompletedUpload[] {
       size: Number(item.size ?? 0),
     };
   });
+}
+
+async function runWithConcurrency<T>(items: T[], limit: number, task: (item: T) => Promise<void>) {
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await task(items[index]);
+    }
+  });
+
+  await Promise.all(workers);
 }
 
 export async function POST(request: Request) {
@@ -36,35 +57,37 @@ export async function POST(request: Request) {
     const event = await getEventBySlug(String(slug));
     if (!event || !verifyGuestCode(code, event)) return Response.json({ error: "Niepoprawny kod weselny." }, { status: 401 });
 
-    const photoRows = [];
     for (const upload of uploads) {
       if (!upload.photoId || !upload.storagePath.startsWith(`${event.id}/${guestId}/`)) {
         return Response.json({ error: "Nieprawidłowe dane przesłanego zdjęcia." }, { status: 400 });
       }
+    }
 
+    await runWithConcurrency(uploads, COMPLETE_CONCURRENCY, async (upload) => {
       if (!(await objectExists(upload.storagePath))) {
-        return Response.json({ error: "Nie udało się potwierdzić przesłanego zdjęcia." }, { status: 400 });
+        throw new UploadCompleteError("Nie udało się potwierdzić przesłanego zdjęcia.");
       }
 
       if (isThumbnailSupported(upload.type) && !(await objectExists(thumbnailPathForStoragePath(upload.storagePath)).catch(() => false))) {
         await createAndStoreImageThumbnail(upload.storagePath, upload.type);
       }
+    });
 
-      photoRows.push({
-        id: upload.photoId,
-        event_id: event.id,
-        guest_id: guestId,
-        storage_path: upload.storagePath,
-        original_filename: upload.name,
-        mime_type: upload.type,
-        size_bytes: upload.size,
-        status: "approved",
-      });
-    }
+    const photoRows = uploads.map((upload) => ({
+      id: upload.photoId,
+      event_id: event.id,
+      guest_id: guestId,
+      storage_path: upload.storagePath,
+      original_filename: upload.name,
+      mime_type: upload.type,
+      size_bytes: upload.size,
+      status: "approved",
+    }));
 
     const inserted = await insertPhotos(photoRows);
     return Response.json({ ok: true, count: inserted.length });
   } catch (error) {
+    if (error instanceof UploadCompleteError) return Response.json({ error: error.message }, { status: error.status });
     return Response.json({ error: error instanceof Error ? error.message : "Nie udało się zapisać zdjęć w galerii." }, { status: 500 });
   }
 }
