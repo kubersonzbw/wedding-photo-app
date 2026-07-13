@@ -1,7 +1,7 @@
 export const MAX_FILES = 100;
 export const MAX_VIDEO_FILES = 10;
 export const MAX_IMAGE_SIZE = 25 * 1024 * 1024;
-export const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
+export const MAX_VIDEO_SIZE = 1024 * 1024 * 1024;
 export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"] as const;
 export const ALLOWED_MEDIA_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES] as const;
@@ -17,7 +17,7 @@ function maxFileSizeForType(type: string) {
 }
 
 function maxFileSizeLabel(type: string) {
-  return ALLOWED_VIDEO_TYPES.includes(type as (typeof ALLOWED_VIDEO_TYPES)[number]) ? "500 MB" : "25 MB";
+  return ALLOWED_VIDEO_TYPES.includes(type as (typeof ALLOWED_VIDEO_TYPES)[number]) ? "1 GB" : "25 MB";
 }
 
 export function isVideoType(type: string) {

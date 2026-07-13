@@ -23,7 +23,7 @@ export default function UploadDropzone({ fileRef, fileCount, uploading = false, 
       </span>
       <strong>{uploading ? "Dodajemy pliki..." : hasFiles ? "Gotowe do wysłania" : "Wybierz zdjęcia lub filmy"}</strong>
       <span>{uploading ? progressLabel ?? "Przesyłamy je do galerii" : hasFiles ? `Wybrano ${photoCountLabel(fileCount)}` : "Maksymalnie 100 plików"}</span>
-      <small>{uploading ? "Nie zamykaj tej strony" : hasFiles ? "Możesz dotknąć tutaj, aby zmienić wybór" : "JPG, PNG, WebP do 25 MB; MP4, MOV, WebM do 500 MB"}</small>
+      <small>{uploading ? "Nie zamykaj tej strony" : hasFiles ? "Możesz dotknąć tutaj, aby zmienić wybór" : "JPG, PNG, WebP do 25 MB; MP4, MOV, WebM do 1 GB"}</small>
     </label>
     <input ref={fileRef} id="photos" className="sr-only" name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" disabled={uploading} onChange={(e) => onChange(Array.from(e.target.files ?? []))} />
   </div>;
