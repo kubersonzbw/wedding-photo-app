@@ -1,7 +1,7 @@
 import { deleteGuest, getEventBySlug, getGuestById, insertGuest } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
-import { isVideoType, validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
+import { ALLOWED_IMAGE_TYPES, isVideoType, validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
 import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { createSignedUploadUrl } from "@/lib/storage/backblaze";
 
@@ -61,7 +61,9 @@ export async function POST(request: Request) {
         const storagePath = `${event.id}/${guest.id}/${photoId}.${extension}`;
         const [signed, signedThumbnail] = await Promise.all([
           createSignedUploadUrl(storagePath, file.type),
-          isVideoType(file.type) ? createSignedUploadUrl(thumbnailPathForStoragePath(storagePath), "image/jpeg") : Promise.resolve(null),
+          (isVideoType(file.type) || ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
+            ? createSignedUploadUrl(thumbnailPathForStoragePath(storagePath), "image/jpeg")
+            : Promise.resolve(null),
         ]);
 
         return {

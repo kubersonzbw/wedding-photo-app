@@ -8,7 +8,7 @@ const THUMBNAIL_QUALITY = 72;
 export function thumbnailPathForStoragePath(path: string) {
   const dotIndex = path.lastIndexOf(".");
   const basePath = dotIndex > -1 ? path.slice(0, dotIndex) : path;
-  return `thumbnails/${basePath}.webp`;
+  return `thumbnails/${basePath}.jpg`;
 }
 
 export function isThumbnailSupported(type: string) {
@@ -20,7 +20,7 @@ export async function createImageThumbnail(sourcePath: string) {
   return sharp(source)
     .rotate()
     .resize({ width: THUMBNAIL_WIDTH, withoutEnlargement: true })
-    .webp({ quality: THUMBNAIL_QUALITY })
+    .jpeg({ quality: THUMBNAIL_QUALITY, mozjpeg: true })
     .toBuffer();
 }
 
@@ -29,6 +29,6 @@ export async function createAndStoreImageThumbnail(sourcePath: string, contentTy
 
   const thumbnailPath = thumbnailPathForStoragePath(sourcePath);
   const thumbnail = await createImageThumbnail(sourcePath);
-  await putObject(thumbnailPath, thumbnail, "image/webp");
+  await putObject(thumbnailPath, thumbnail, "image/jpeg");
   return thumbnailPath;
 }

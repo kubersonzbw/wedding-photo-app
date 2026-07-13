@@ -24,8 +24,8 @@ type UploadStartResponse = {
 class UserVisibleError extends Error {}
 const UPLOAD_BATCH_SIZE = 10;
 const UPLOAD_CONCURRENCY = 3;
-const VIDEO_THUMBNAIL_WIDTH = 640;
-const VIDEO_THUMBNAIL_QUALITY = 0.72;
+const THUMBNAIL_WIDTH = 640;
+const THUMBNAIL_QUALITY = 0.72;
 
 async function readApiResponse<T>(res: Response): Promise<T & { error?: string }> {
   const responseText = await res.text();
@@ -67,6 +67,29 @@ function isVideoFile(file: File) {
   return file.type.startsWith("video/");
 }
 
+function isImageFile(file: File) {
+  return file.type.startsWith("image/");
+}
+
+function canvasToJpegBlob(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Nie udało się przygotować miniatury."));
+    }, "image/jpeg", THUMBNAIL_QUALITY);
+  });
+}
+
+function scaledThumbnailSize(width: number, height: number) {
+  const safeWidth = Math.max(width, 1);
+  const safeHeight = Math.max(height, 1);
+  const scale = THUMBNAIL_WIDTH / safeWidth;
+  return {
+    width: Math.min(THUMBNAIL_WIDTH, safeWidth),
+    height: Math.max(1, Math.round(safeHeight * Math.min(scale, 1))),
+  };
+}
+
 function waitForVideoEvent(video: HTMLVideoElement, eventName: keyof HTMLMediaElementEventMap) {
   return new Promise<void>((resolve, reject) => {
     const cleanup = () => {
@@ -101,26 +124,34 @@ async function createVideoThumbnail(file: File) {
     video.currentTime = Math.min(0.25, Math.max(0, (video.duration || 1) / 10));
     await waitForVideoEvent(video, "seeked");
 
-    const scale = VIDEO_THUMBNAIL_WIDTH / Math.max(video.videoWidth, 1);
-    const width = Math.min(VIDEO_THUMBNAIL_WIDTH, video.videoWidth || VIDEO_THUMBNAIL_WIDTH);
-    const height = Math.max(1, Math.round((video.videoHeight || VIDEO_THUMBNAIL_WIDTH) * Math.min(scale, 1)));
+    const { width, height } = scaledThumbnailSize(video.videoWidth || THUMBNAIL_WIDTH, video.videoHeight || THUMBNAIL_WIDTH);
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Nie udało się przygotować miniatury filmu.");
     context.drawImage(video, 0, 0, width, height);
-
-    return await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error("Nie udało się przygotować miniatury filmu."));
-      }, "image/jpeg", VIDEO_THUMBNAIL_QUALITY);
-    });
+    return await canvasToJpegBlob(canvas);
   } finally {
     video.removeAttribute("src");
     video.load();
     URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function createImageThumbnail(file: File) {
+  const image = await createImageBitmap(file);
+  try {
+    const { width, height } = scaledThumbnailSize(image.width, image.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Nie udało się przygotować miniatury zdjęcia.");
+    context.drawImage(image, 0, 0, width, height);
+    return await canvasToJpegBlob(canvas);
+  } finally {
+    image.close();
   }
 }
 
@@ -133,18 +164,18 @@ async function uploadSignedFile(file: File, upload: UploadStartResponse["uploads
 
   if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku do galerii.");
 
-  if (isVideoFile(file) && upload.signedThumbnailUrl) {
+  if ((isImageFile(file) || isVideoFile(file)) && upload.signedThumbnailUrl) {
     try {
-      const thumbnail = await createVideoThumbnail(file);
+      const thumbnail = isVideoFile(file) ? await createVideoThumbnail(file) : await createImageThumbnail(file);
       const thumbnailRes: Response = await fetch(upload.signedThumbnailUrl, {
         method: "PUT",
         headers: { "Content-Type": "image/jpeg" },
         body: thumbnail,
       });
 
-      if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury filmu.");
+      if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury.");
     } catch (thumbnailError) {
-      console.warn("Nie udało się przygotować miniatury filmu.", thumbnailError);
+      console.warn("Nie udało się przygotować miniatury.", thumbnailError);
     }
   }
 }
