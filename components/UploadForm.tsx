@@ -23,6 +23,7 @@ type UploadStartResponse = {
 
 class UserVisibleError extends Error {}
 const UPLOAD_BATCH_SIZE = 10;
+const UPLOAD_CONCURRENCY = 3;
 const VIDEO_THUMBNAIL_WIDTH = 640;
 const VIDEO_THUMBNAIL_QUALITY = 0.72;
 
@@ -47,6 +48,19 @@ function chunkFiles(files: File[], size: number) {
   const chunks: File[][] = [];
   for (let index = 0; index < files.length; index += size) chunks.push(files.slice(index, index + size));
   return chunks;
+}
+
+async function runWithConcurrency<T>(items: T[], limit: number, task: (item: T, index: number) => Promise<void>) {
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await task(items[index], index);
+    }
+  });
+
+  await Promise.all(workers);
 }
 
 function isVideoFile(file: File) {
@@ -110,6 +124,31 @@ async function createVideoThumbnail(file: File) {
   }
 }
 
+async function uploadSignedFile(file: File, upload: UploadStartResponse["uploads"][number]) {
+  const uploadRes: Response = await fetch(upload.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+
+  if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku do galerii.");
+
+  if (isVideoFile(file) && upload.signedThumbnailUrl) {
+    try {
+      const thumbnail = await createVideoThumbnail(file);
+      const thumbnailRes: Response = await fetch(upload.signedThumbnailUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "image/jpeg" },
+        body: thumbnail,
+      });
+
+      if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury filmu.");
+    } catch (thumbnailError) {
+      console.warn("Nie udało się przygotować miniatury filmu.", thumbnailError);
+    }
+  }
+}
+
 function isNetworkError(error: unknown) {
   if (!(error instanceof Error)) return true;
   if (error instanceof TypeError) return true;
@@ -143,7 +182,9 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
 
   async function submit() {
     let guestId: string | null = null;
-    const uploadedStoragePaths: string[] = [];
+    let pendingStoragePaths: string[] = [];
+    let completedCount = 0;
+    const totalCount = selectedFiles.length;
     setLoading(true); setUploadedCount(0); setError(null); setSuccess(false);
     try {
       if (!guestName.trim()) throw new UserVisibleError("Podaj swoje imię, żebyśmy wiedzieli, kto dodał zdjęcia.");
@@ -152,6 +193,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       const validation = validatePhotoList(selectedFiles);
       if (validation) throw new UserVisibleError(validation);
       for (const batch of chunkFiles(selectedFiles, UPLOAD_BATCH_SIZE)) {
+        pendingStoragePaths = [];
         const startRes: Response = await fetch("/api/upload/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -170,34 +212,11 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         }
         guestId = startData.guestId;
 
-        for (const [index, upload] of startData.uploads.entries()) {
-          const file = batch[index];
-          const uploadRes: Response = await fetch(upload.signedUrl, {
-            method: "PUT",
-            headers: { "Content-Type": file.type },
-            body: file,
-          });
-
-          if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku do galerii.");
-          uploadedStoragePaths.push(upload.storagePath);
-
-          if (isVideoFile(file) && upload.signedThumbnailUrl) {
-            try {
-              const thumbnail = await createVideoThumbnail(file);
-              const thumbnailRes: Response = await fetch(upload.signedThumbnailUrl, {
-                method: "PUT",
-                headers: { "Content-Type": "image/jpeg" },
-                body: thumbnail,
-              });
-
-              if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury filmu.");
-            } catch (thumbnailError) {
-              console.warn("Nie udało się przygotować miniatury filmu.", thumbnailError);
-            }
-          }
-
+        pendingStoragePaths = startData.uploads.map((upload) => upload.storagePath);
+        await runWithConcurrency(startData.uploads, UPLOAD_CONCURRENCY, async (upload, index) => {
+          await uploadSignedFile(batch[index], upload);
           setUploadedCount((count) => count + 1);
-        }
+        });
 
         const completeRes: Response = await fetch("/api/upload/complete", {
           method: "POST",
@@ -217,6 +236,9 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         });
         const completeData = await readApiResponse<{ count: number }>(completeRes);
         if (!completeRes.ok) throw new Error(completeData.error ?? "Pliki zostały przesłane, ale nie udało się zapisać ich w galerii.");
+        completedCount += batch.length;
+        setUploadedCount(completedCount);
+        pendingStoragePaths = [];
       }
 
       setCodeConfirmed(true);
@@ -227,9 +249,15 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
       if (guestId) {
-        await cleanupUpload(slug, accessCode, guestId, uploadedStoragePaths).catch(() => null);
+        await cleanupUpload(slug, accessCode, guestId, pendingStoragePaths).catch(() => null);
       }
-      setError(uploadErrorMessage(e, guestId));
+      setError(completedCount > 0 && completedCount < totalCount
+        ? `Wysłano ${completedCount} z ${totalCount} plików. Część plików nie została dodana. Spróbuj wysłać pozostałe ponownie.`
+        : uploadErrorMessage(e, guestId));
+      if (completedCount > 0) {
+        setSelectedFiles((files) => files.slice(completedCount));
+        if (fileRef.current) fileRef.current.value = "";
+      }
     }
     finally { setLoading(false); }
   }
