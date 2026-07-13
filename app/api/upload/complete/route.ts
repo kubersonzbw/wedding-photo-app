@@ -1,6 +1,8 @@
-import { getEventBySlug, insertPhotos, objectExists } from "@/lib/supabase/admin";
+import { getEventBySlug, insertPhotos } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
+import { createAndStoreImageThumbnail } from "@/lib/photos/thumbnails";
+import { objectExists } from "@/lib/storage/backblaze";
 
 type CompletedUpload = PhotoFileInfo & {
   photoId: string;
@@ -43,6 +45,8 @@ export async function POST(request: Request) {
       if (!(await objectExists(upload.storagePath))) {
         return Response.json({ error: "Nie udało się potwierdzić przesłanego zdjęcia." }, { status: 400 });
       }
+
+      await createAndStoreImageThumbnail(upload.storagePath, upload.type);
 
       photoRows.push({
         id: upload.photoId,

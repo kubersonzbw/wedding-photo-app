@@ -15,6 +15,7 @@ type Photo = {
   status: PhotoStatus;
   created_at: string;
   original_filename?: string;
+  mime_type?: string;
   guests?: { name?: string };
   events?: { title?: string; slug?: string };
 };
@@ -35,6 +36,10 @@ function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+}
+
+function isVideo(photo: Photo) {
+  return String(photo.mime_type ?? "").startsWith("video/");
 }
 
 export default function AdminPage() {
@@ -102,7 +107,7 @@ export default function AdminPage() {
   }
 
   async function act(photo: Photo, nextStatus: AdminAction) {
-    if (nextStatus === "deleted" && !window.confirm("Usunąć to zdjęcie na stałe z galerii i ze Storage?")) return;
+    if (nextStatus === "deleted" && !window.confirm("Usunąć ten plik na stałe z galerii i ze Storage?")) return;
     setActionId(photo.id);
     setError("");
     try {
@@ -156,12 +161,12 @@ export default function AdminPage() {
       <header className="admin-header">
         <div>
           <p className="admin-eyebrow">Panel admina</p>
-          <h1>Zarządzanie zdjęciami</h1>
+          <h1>Zarządzanie galerią</h1>
         </div>
         <button className="btn btn-ghost admin-logout" onClick={logout}>Wyloguj</button>
       </header>
 
-      <div className="admin-filters" aria-label="Filtr statusu zdjęć">
+      <div className="admin-filters" aria-label="Filtr statusu plików">
         {FILTERS.map((filter) => <button key={filter.value} className={status === filter.value ? "is-active" : ""} onClick={() => setStatus(filter.value)}>
           <span>{filter.label}</span>
           <strong>{counts[filter.value]}</strong>
@@ -169,12 +174,14 @@ export default function AdminPage() {
       </div>
 
       {error && <p className="admin-error">{error}</p>}
-      {loading && <p className="admin-muted admin-loading">Ładujemy zdjęcia...</p>}
-      {!loading && photos.length === 0 && <p className="admin-empty">Brak zdjęć w tym widoku.</p>}
+      {loading && <p className="admin-muted admin-loading">Ładujemy pliki...</p>}
+      {!loading && photos.length === 0 && <p className="admin-empty">Brak plików w tym widoku.</p>}
 
       <div className="admin-list">
         {photos.map((photo) => <article className="admin-card" key={photo.id}>
-          {photo.url ? <img src={photo.url} alt="Podgląd zdjęcia" /> : <div className="admin-missing-photo">Brak pliku w Storage</div>}
+          {photo.url
+            ? isVideo(photo) ? <video src={photo.url} controls playsInline preload="metadata" /> : <img src={photo.url} alt="Podgląd zdjęcia" />
+            : <div className="admin-missing-photo">Brak pliku w Storage</div>}
           <div className="admin-card-body">
             <div>
               <b>{photo.guests?.name ?? "Gość"}</b>

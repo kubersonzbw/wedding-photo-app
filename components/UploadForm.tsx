@@ -4,7 +4,6 @@ import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { galleryHref } from "@/lib/events/config";
 import { validatePhotoList } from "@/lib/photos/validation";
-import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import BrokenHeartIcon from "@/components/BrokenHeartIcon";
 import UploadDropzone from "@/components/UploadDropzone";
 
@@ -13,14 +12,19 @@ type UploadStartResponse = {
   uploads: Array<{
     photoId: string;
     storagePath: string;
-    token: string;
+    signedUrl: string;
     originalFilename: string;
     mimeType: string;
     sizeBytes: number;
+    thumbnailStoragePath?: string;
+    signedThumbnailUrl?: string;
   }>;
 };
 
 class UserVisibleError extends Error {}
+const UPLOAD_BATCH_SIZE = 10;
+const VIDEO_THUMBNAIL_WIDTH = 640;
+const VIDEO_THUMBNAIL_QUALITY = 0.72;
 
 async function readApiResponse<T>(res: Response): Promise<T & { error?: string }> {
   const responseText = await res.text();
@@ -39,6 +43,73 @@ async function cleanupUpload(slug: string, accessCode: string, guestId: string, 
   });
 }
 
+function chunkFiles(files: File[], size: number) {
+  const chunks: File[][] = [];
+  for (let index = 0; index < files.length; index += size) chunks.push(files.slice(index, index + size));
+  return chunks;
+}
+
+function isVideoFile(file: File) {
+  return file.type.startsWith("video/");
+}
+
+function waitForVideoEvent(video: HTMLVideoElement, eventName: keyof HTMLMediaElementEventMap) {
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      video.removeEventListener(eventName, onEvent);
+      video.removeEventListener("error", onError);
+    };
+    const onEvent = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Nie udało się przygotować miniatury filmu."));
+    };
+
+    video.addEventListener(eventName, onEvent, { once: true });
+    video.addEventListener("error", onError, { once: true });
+  });
+}
+
+async function createVideoThumbnail(file: File) {
+  const objectUrl = URL.createObjectURL(file);
+  const video = document.createElement("video");
+
+  try {
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.src = objectUrl;
+
+    await waitForVideoEvent(video, "loadedmetadata");
+    video.currentTime = Math.min(0.25, Math.max(0, (video.duration || 1) / 10));
+    await waitForVideoEvent(video, "seeked");
+
+    const scale = VIDEO_THUMBNAIL_WIDTH / Math.max(video.videoWidth, 1);
+    const width = Math.min(VIDEO_THUMBNAIL_WIDTH, video.videoWidth || VIDEO_THUMBNAIL_WIDTH);
+    const height = Math.max(1, Math.round((video.videoHeight || VIDEO_THUMBNAIL_WIDTH) * Math.min(scale, 1)));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Nie udało się przygotować miniatury filmu.");
+    context.drawImage(video, 0, 0, width, height);
+
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Nie udało się przygotować miniatury filmu."));
+      }, "image/jpeg", VIDEO_THUMBNAIL_QUALITY);
+    });
+  } finally {
+    video.removeAttribute("src");
+    video.load();
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function isNetworkError(error: unknown) {
   if (!(error instanceof Error)) return true;
   if (error instanceof TypeError) return true;
@@ -47,8 +118,8 @@ function isNetworkError(error: unknown) {
 
 function uploadErrorMessage(error: unknown, guestId: string | null) {
   if (error instanceof UserVisibleError) return error.message;
-  if (guestId || isNetworkError(error)) return "Nie udało się dodać zdjęć. Spróbuj ponownie.";
-  return "Nie udało się dodać zdjęć. Spróbuj ponownie.";
+  if (guestId || isNetworkError(error)) return "Nie udało się dodać plików. Spróbuj ponownie.";
+  return "Nie udało się dodać plików. Spróbuj ponownie.";
 }
 
 export default function UploadForm({ slug, initialCode = "", locked = false }: { slug: string; initialCode?: string; locked?: boolean }) {
@@ -57,6 +128,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const [codeConfirmed, setCodeConfirmed] = useState(Boolean(initialCode));
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [uploadedCount, setUploadedCount] = useState(0);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(locked ? "Ten link wygląda na nieprawidłowy. Poproś parę młodą o poprawny kod." : null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -65,65 +137,88 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
 
   function handleFilesChange(files: File[]) {
     setSelectedFiles(files);
+    setUploadedCount(0);
     setError(null);
   }
 
   async function submit() {
     let guestId: string | null = null;
     const uploadedStoragePaths: string[] = [];
-    setLoading(true); setError(null); setSuccess(false);
+    setLoading(true); setUploadedCount(0); setError(null); setSuccess(false);
     try {
       if (!guestName.trim()) throw new UserVisibleError("Podaj swoje imię, żebyśmy wiedzieli, kto dodał zdjęcia.");
       if (!accessCode.trim()) throw new UserVisibleError("Wpisz kod weselny, aby dodać zdjęcia.");
-      if (!consent) throw new UserVisibleError("Zaznacz zgodę, aby dodać zdjęcia do wspólnej galerii.");
+      if (!consent) throw new UserVisibleError("Zaznacz zgodę, aby dodać pliki do wspólnej galerii.");
       const validation = validatePhotoList(selectedFiles);
       if (validation) throw new UserVisibleError(validation);
-      const startRes = await fetch("/api/upload/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slug,
-          accessCode,
-          guestName,
-          files: selectedFiles.map((file) => ({ name: file.name, type: file.type, size: file.size })),
-        }),
-      });
-      const startData = await readApiResponse<UploadStartResponse>(startRes);
-      if (!startRes.ok) {
-        if ([400, 401, 429].includes(startRes.status) && startData.error) throw new UserVisibleError(startData.error);
-        throw new Error(startData.error ?? "Nie udało się przygotować uploadu.");
+      for (const batch of chunkFiles(selectedFiles, UPLOAD_BATCH_SIZE)) {
+        const startRes: Response = await fetch("/api/upload/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug,
+            accessCode,
+            guestName,
+            guestId,
+            files: batch.map((file) => ({ name: file.name, type: file.type, size: file.size })),
+          }),
+        });
+        const startData = await readApiResponse<UploadStartResponse>(startRes);
+        if (!startRes.ok) {
+          if ([400, 401, 429].includes(startRes.status) && startData.error) throw new UserVisibleError(startData.error);
+          throw new Error(startData.error ?? "Nie udało się przygotować uploadu.");
+        }
+        guestId = startData.guestId;
+
+        for (const [index, upload] of startData.uploads.entries()) {
+          const file = batch[index];
+          const uploadRes: Response = await fetch(upload.signedUrl, {
+            method: "PUT",
+            headers: { "Content-Type": file.type },
+            body: file,
+          });
+
+          if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku do galerii.");
+          uploadedStoragePaths.push(upload.storagePath);
+
+          if (isVideoFile(file) && upload.signedThumbnailUrl) {
+            try {
+              const thumbnail = await createVideoThumbnail(file);
+              const thumbnailRes: Response = await fetch(upload.signedThumbnailUrl, {
+                method: "PUT",
+                headers: { "Content-Type": "image/jpeg" },
+                body: thumbnail,
+              });
+
+              if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury filmu.");
+            } catch (thumbnailError) {
+              console.warn("Nie udało się przygotować miniatury filmu.", thumbnailError);
+            }
+          }
+
+          setUploadedCount((count) => count + 1);
+        }
+
+        const completeRes: Response = await fetch("/api/upload/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug,
+            accessCode,
+            guestId: startData.guestId,
+            uploads: startData.uploads.map((upload) => ({
+              photoId: upload.photoId,
+              storagePath: upload.storagePath,
+              name: upload.originalFilename,
+              type: upload.mimeType,
+              size: upload.sizeBytes,
+            })),
+          }),
+        });
+        const completeData = await readApiResponse<{ count: number }>(completeRes);
+        if (!completeRes.ok) throw new Error(completeData.error ?? "Pliki zostały przesłane, ale nie udało się zapisać ich w galerii.");
       }
-      guestId = startData.guestId;
 
-      const supabase = createBrowserSupabaseClient();
-      for (const [index, upload] of startData.uploads.entries()) {
-        const file = selectedFiles[index];
-        const { error: uploadError } = await supabase.storage
-          .from("wedding-photos")
-          .uploadToSignedUrl(upload.storagePath, upload.token, file, { contentType: file.type });
-
-        if (uploadError) throw new Error(uploadError.message || "Nie udało się przesłać zdjęcia do galerii.");
-        uploadedStoragePaths.push(upload.storagePath);
-      }
-
-      const completeRes = await fetch("/api/upload/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slug,
-          accessCode,
-          guestId: startData.guestId,
-          uploads: startData.uploads.map((upload) => ({
-            photoId: upload.photoId,
-            storagePath: upload.storagePath,
-            name: upload.originalFilename,
-            type: upload.mimeType,
-            size: upload.sizeBytes,
-          })),
-        }),
-      });
-      const completeData = await readApiResponse<{ count: number }>(completeRes);
-      if (!completeRes.ok) throw new Error(completeData.error ?? "Zdjęcia zostały przesłane, ale nie udało się zapisać ich w galerii.");
       setCodeConfirmed(true);
       setSuccess(true);
       setGuestName("");
@@ -148,10 +243,10 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     return <section className="success-state" aria-live="polite">
       <div className="success-bloom"><span className="success-camera-icon" aria-hidden="true" /></div>
       <h2>Dziękujemy!</h2>
-      <p>Zdjęcia są już w galerii <span className="success-inline-heart" aria-hidden="true" /></p>
+      <p>Pliki są już w galerii <span className="success-inline-heart" aria-hidden="true" /></p>
       <div className="success-actions">
-        <Link className="btn btn-primary" href={galleryUrl}>Zobacz galerię zdjęć</Link>
-        <button className="btn btn-ghost" onClick={() => setSuccess(false)}>Dodaj kolejne zdjęcia</button>
+        <Link className="btn btn-primary" href={galleryUrl}>Zobacz galerię</Link>
+        <button className="btn btn-ghost" onClick={() => setSuccess(false)}>Dodaj kolejne pliki</button>
       </div>
     <div className="heart-divider" aria-hidden="true"><span /><i className="heart-divider-icon" /><span /></div>
     </section>;
@@ -159,7 +254,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
 
   return <form id="upload" onSubmit={handleSubmit} className="upload-card" aria-busy={loading}>
     <div className="card-heading">
-      <h2>Dodaj zdjęcia do wspólnej galerii</h2>
+      <h2>Dodaj zdjęcia i filmy do wspólnej galerii</h2>
       <p>Wpisz imię, wybierz ulubione kadry i wyślij je jednym kliknięciem.</p>
     </div>
     {error && <p className="error upload-error-top" role="alert">
@@ -177,9 +272,9 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       </span>
     </div>
     {!codeConfirmed && <div className="floating-field"><label htmlFor="accessCode">Kod weselny</label><input id="accessCode" name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod weselny" /></div>}
-    <UploadDropzone fileRef={fileRef} fileCount={selectedFiles.length} uploading={loading} onChange={handleFilesChange} />
-    <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć do prywatnej galerii weselnej.</span><span className="consent-heart-icon" aria-hidden="true" /></label>
-    <button disabled={loading || locked} className="btn btn-primary cta-button"><span className="cta-camera-icon" aria-hidden="true" /><span className="cta-button-label">{loading ? "Dodajemy zdjęcia…" : "Dodaj zdjęcia"}</span></button>
-    {!loading && <Link className="text-link" href={galleryUrl}>Zobacz galerię zdjęć</Link>}
+    <UploadDropzone fileRef={fileRef} fileCount={selectedFiles.length} uploading={loading} progressLabel={selectedFiles.length > 0 ? `Wysłano ${uploadedCount} / ${selectedFiles.length}` : undefined} onChange={handleFilesChange} />
+    <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć i filmów do prywatnej galerii weselnej.</span><span className="consent-heart-icon" aria-hidden="true" /></label>
+    <button disabled={loading || locked} className="btn btn-primary cta-button"><span className="cta-camera-icon" aria-hidden="true" /><span className="cta-button-label">{loading ? "Dodajemy pliki…" : "Dodaj pliki"}</span></button>
+    {!loading && <Link className="text-link" href={galleryUrl}>Zobacz galerię</Link>}
   </form>;
 }

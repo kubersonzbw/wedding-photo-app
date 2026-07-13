@@ -1,14 +1,14 @@
 import type { RefObject } from "react";
 
 function photoCountLabel(count: number) {
-  if (count === 1) return "1 zdjęcie";
+  if (count === 1) return "1 plik";
   const lastTwo = count % 100;
   const last = count % 10;
-  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return `${count} zdjęcia`;
-  return `${count} zdjęć`;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return `${count} pliki`;
+  return `${count} plików`;
 }
 
-export default function UploadDropzone({ fileRef, fileCount, uploading = false, onChange }: { fileRef: RefObject<HTMLInputElement | null>; fileCount: number; uploading?: boolean; onChange: (files: File[]) => void }) {
+export default function UploadDropzone({ fileRef, fileCount, uploading = false, progressLabel, onChange }: { fileRef: RefObject<HTMLInputElement | null>; fileCount: number; uploading?: boolean; progressLabel?: string; onChange: (files: File[]) => void }) {
   const hasFiles = fileCount > 0;
 
   return <div>
@@ -21,10 +21,10 @@ export default function UploadDropzone({ fileRef, fileCount, uploading = false, 
           <rect x="156.012" y="71.816" width="18.989" height="14.859" />
         </svg>
       </span>
-      <strong>{uploading ? "Dodajemy zdjęcia..." : hasFiles ? "Gotowe do wysłania" : "Wybierz zdjęcia z telefonu"}</strong>
-      <span>{uploading ? "Przesyłamy je do galerii" : hasFiles ? `Wybrano ${photoCountLabel(fileCount)}` : "Maksymalnie 10 zdjęć"}</span>
-      <small>{uploading ? "Nie zamykaj tej strony" : hasFiles ? "Możesz dotknąć tutaj, aby zmienić wybór" : "JPG, PNG lub WebP, do 25 MB każde"}</small>
+      <strong>{uploading ? "Dodajemy pliki..." : hasFiles ? "Gotowe do wysłania" : "Wybierz zdjęcia lub filmy"}</strong>
+      <span>{uploading ? progressLabel ?? "Przesyłamy je do galerii" : hasFiles ? `Wybrano ${photoCountLabel(fileCount)}` : "Maksymalnie 100 plików"}</span>
+      <small>{uploading ? "Nie zamykaj tej strony" : hasFiles ? "Możesz dotknąć tutaj, aby zmienić wybór" : "JPG, PNG, WebP do 25 MB; MP4, MOV, WebM do 500 MB"}</small>
     </label>
-    <input ref={fileRef} id="photos" className="sr-only" name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={(e) => onChange(Array.from(e.target.files ?? []))} />
+    <input ref={fileRef} id="photos" className="sr-only" name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" disabled={uploading} onChange={(e) => onChange(Array.from(e.target.files ?? []))} />
   </div>;
 }

@@ -1,21 +1,29 @@
-import { approvedPhotos, countApprovedPhotos, getEventBySlug, signedUrl } from "@/lib/supabase/admin";
+import { approvedPhotos, countApprovedPhotos, getEventBySlug } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
+import { objectExists, signedUrl } from "@/lib/storage/backblaze";
 
 async function toGalleryPhoto(photo: Record<string, unknown>) {
   try {
     const path = String(photo.storage_path ?? "").trim();
     if (!path) return null;
 
-    const [url, thumbnailUrl] = await Promise.all([
-      signedUrl(path, 300, { width: 2000, quality: 86, resize: "contain" }),
-      signedUrl(path, 300, { width: 700, quality: 76, resize: "contain" }),
+    const mimeType = String(photo.mime_type ?? "");
+    const mediaType = mimeType.startsWith("video/") ? "video" : "image";
+    const thumbnailPath = thumbnailPathForStoragePath(path);
+    const [url, hasVideoThumbnail] = await Promise.all([
+      signedUrl(path, 300),
+      mediaType === "video" ? objectExists(thumbnailPath).catch(() => false) : Promise.resolve(false),
     ]);
+    const thumbnailUrl = mediaType === "image" || hasVideoThumbnail ? await signedUrl(thumbnailPath, 300) : undefined;
 
     return {
       id: photo.id,
       url,
       thumbnailUrl,
+      mediaType,
+      mimeType,
       guestName: (photo.guests as { name?: string } | undefined)?.name,
       createdAt: photo.created_at,
     };

@@ -39,6 +39,11 @@ export async function insertGuest(eventId: string, name: string) {
   return rows[0];
 }
 
+export async function getGuestById(eventId: string, guestId: string) {
+  const rows = await supabaseFetch(`/rest/v1/guests?id=eq.${encodeURIComponent(guestId)}&event_id=eq.${encodeURIComponent(eventId)}&select=*`);
+  return rows?.[0] ?? null;
+}
+
 export async function insertPhoto(photo: Record<string, unknown>) {
   const rows = await supabaseFetch("/rest/v1/photos?select=*", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(photo) });
   return rows[0];
@@ -111,49 +116,4 @@ export async function countApprovedPhotos(eventId: string) {
   if (!res.ok) throw new Error(await res.text());
   const contentRange = res.headers.get("content-range");
   return Number(contentRange?.split("/")[1] ?? 0);
-}
-
-type ImageTransform = {
-  width?: number;
-  height?: number;
-  quality?: number;
-  resize?: "cover" | "contain" | "fill";
-  format?: "origin";
-};
-
-function encodeStoragePath(path: string) {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-export async function createSignedUploadUrl(path: string) {
-  const data = await supabaseFetch(`/storage/v1/object/upload/sign/wedding-photos/${encodeStoragePath(path)}`, { method: "POST", body: JSON.stringify({}) });
-  const env = assertSupabaseAdminEnv();
-  const signedUrl = `${env.url}/storage/v1${data.url}`;
-  const token = new URL(signedUrl).searchParams.get("token");
-  if (!token) throw new Error("Missing signed upload token.");
-  return { signedUrl, token, path };
-}
-
-export async function objectExists(path: string) {
-  const env = assertSupabaseAdminEnv();
-  const res = await fetch(`${env.url}/storage/v1/object/wedding-photos/${encodeStoragePath(path)}`, { method: "HEAD", headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` }, cache: "no-store" });
-  if (res.status === 404) return false;
-  if (!res.ok) throw new Error(await res.text());
-  return true;
-}
-
-export async function removeObject(path: string) {
-  await supabaseFetch("/storage/v1/object/wedding-photos", { method: "DELETE", body: JSON.stringify({ prefixes: [path] }) });
-}
-
-export async function removeObjects(paths: string[]) {
-  if (paths.length === 0) return;
-  await supabaseFetch("/storage/v1/object/wedding-photos", { method: "DELETE", body: JSON.stringify({ prefixes: paths }) });
-}
-
-export async function signedUrl(path: string, expiresIn = 300, transform?: ImageTransform) {
-  const body = transform ? { expiresIn, transform } : { expiresIn };
-  const data = await supabaseFetch(`/storage/v1/object/sign/wedding-photos/${encodeStoragePath(path)}`, { method: "POST", body: JSON.stringify(body) });
-  const env = assertSupabaseAdminEnv();
-  return `${env.url}/storage/v1${data.signedURL}`;
 }
