@@ -31,6 +31,11 @@ function mergeUniquePhotos(current: GalleryPhoto[], next: GalleryPhoto[]) {
   })];
 }
 
+function replaceKnownPhotos(current: GalleryPhoto[], refreshed: GalleryPhoto[]) {
+  const byId = new Map(refreshed.map((photo) => [photo.id, photo]));
+  return current.map((photo) => byId.get(photo.id) ?? photo);
+}
+
 export default function GalleryClient({ initialSlug, initialCode = "" }: { initialSlug: string; initialCode?: string }) {
   const [slug] = useState(initialSlug);
   const [draftCode, setDraftCode] = useState(initialCode);
@@ -43,10 +48,12 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   const [loadingMore, setLoadingMore] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [pullRefreshing, setPullRefreshing] = useState(false);
+  const [mediaRefreshing, setMediaRefreshing] = useState(false);
   const [hasRequested, setHasRequested] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const active = activeIndex === null ? null : photos[activeIndex];
   const initialLoadStarted = useRef(false);
+  const mediaRefreshInFlight = useRef(false);
   const pullStartY = useRef<number | null>(null);
   const uploadParams = new URLSearchParams({ returnTo: "gallery" });
   if (verifiedCode) uploadParams.set("code", verifiedCode);
@@ -97,6 +104,27 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     finally { if (append) setLoadingMore(false); else if (!silent) setLoading(false); }
   }, [draftCode, photos.length, slug]);
 
+  const refreshMediaUrls = useCallback(async () => {
+    if (!verifiedCode || mediaRefreshInFlight.current) return;
+    mediaRefreshInFlight.current = true;
+    setMediaRefreshing(true);
+    try {
+      const limit = Math.min(Math.max(photos.length || PAGE_SIZE, PAGE_SIZE), 120);
+      const res = await fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, guestCode: verifiedCode, limit, offset: 0 }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Nie udało się odświeżyć galerii.");
+      const refreshedPhotos = data.photos ?? [];
+      setPhotos((current) => replaceKnownPhotos(current, refreshedPhotos));
+      setTotalCount(Number(data.totalCount) || 0);
+      setHasMore(Boolean(data.hasMore));
+    } catch {
+      setError("Linki do podglądu wygasły. Odśwież galerię i spróbuj ponownie.");
+    } finally {
+      mediaRefreshInFlight.current = false;
+      setMediaRefreshing(false);
+    }
+  }, [photos.length, slug, verifiedCode]);
+
   function handleCodeChange(value: string) {
     setDraftCode(value);
     setError("");
@@ -122,7 +150,6 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
       return;
     }
 
-    if (distance > 12) event.preventDefault();
     setPullDistance(Math.min(PULL_REFRESH_MAX, distance * 0.48));
   }
 
@@ -170,11 +197,12 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
         {showCodeCard && <section className="gallery-code-card"><div className="floating-field"><label htmlFor="guestCode">Kod weselny</label><input id="guestCode" value={draftCode} onChange={(e)=>handleCodeChange(e.target.value)} placeholder="Wpisz kod weselny" /></div><button className="btn btn-ghost" onClick={()=>load()} disabled={loading || !draftCode.trim()}><span className="gallery-code-icon" aria-hidden="true" /><span className="gallery-code-label">{loading ? "Przygotowujemy galerię…" : "Pokaż galerię"}</span></button></section>}
         {loading && <LoadingGalleryState showCopy={Boolean(initialCode)} />}
         {!loading && error && <ErrorState title={errorTitle} description={errorDescription} onRefresh={invalidCodeError ? undefined : () => load()} />}
-        {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={setActiveIndex} />}
-        {!loading && !error && hasRequested && photos.length > 0 && hasMore && <button className="btn btn-ghost gallery-load-more" onClick={() => load(slug, verifiedCode || draftCode, true)} disabled={loadingMore}>{loadingMore ? "Ładujemy zdjęcia…" : "Pokaż więcej zdjęć"}</button>}
+        {!loading && !error && mediaRefreshing && <p className="gallery-refresh-note" role="status">Odświeżamy podgląd galerii…</p>}
+        {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={setActiveIndex} onMediaError={refreshMediaUrls} />}
+        {!loading && !error && hasRequested && photos.length > 0 && hasMore && <button className="btn btn-ghost gallery-load-more" onClick={() => load(slug, verifiedCode || draftCode, true)} disabled={loadingMore}>{loadingMore ? "Ładujemy…" : "Pokaż więcej"}</button>}
         {!loading && !error && hasRequested && photos.length === 0 && <EmptyGalleryState href={uploadHref} />}
       </div>
     </div>
-    {active && <PhotoLightbox photo={active} current={(activeIndex ?? 0) + 1} total={photos.length} onClose={() => setActiveIndex(null)} onPrevious={() => setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length)} onNext={() => setActiveIndex((c) => c === null ? c : (c + 1) % photos.length)} />}
+    {active && <PhotoLightbox photo={active} current={(activeIndex ?? 0) + 1} total={photos.length} onClose={() => setActiveIndex(null)} onPrevious={() => setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length)} onNext={() => setActiveIndex((c) => c === null ? c : (c + 1) % photos.length)} onMediaError={refreshMediaUrls} />}
   </WeddingShell>;
 }

@@ -4,6 +4,8 @@ import { checkRateLimit } from "@/lib/security/rate-limit";
 import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { objectExists, signedUrl } from "@/lib/storage/backblaze";
 
+const GALLERY_SIGNED_URL_EXPIRES_IN = 300;
+
 async function toGalleryPhoto(photo: Record<string, unknown>) {
   try {
     const path = String(photo.storage_path ?? "").trim();
@@ -13,10 +15,10 @@ async function toGalleryPhoto(photo: Record<string, unknown>) {
     const mediaType = mimeType.startsWith("video/") ? "video" : "image";
     const thumbnailPath = thumbnailPathForStoragePath(path);
     const [url, hasVideoThumbnail] = await Promise.all([
-      signedUrl(path, 300),
+      signedUrl(path, GALLERY_SIGNED_URL_EXPIRES_IN),
       mediaType === "video" ? objectExists(thumbnailPath).catch(() => false) : Promise.resolve(false),
     ]);
-    const thumbnailUrl = mediaType === "image" || hasVideoThumbnail ? await signedUrl(thumbnailPath, 300) : undefined;
+    const thumbnailUrl = mediaType === "image" || hasVideoThumbnail ? await signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : undefined;
 
     return {
       id: photo.id,
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
   try {
     const { slug, galleryCode, guestCode, limit: requestedLimit, offset: requestedOffset } = await request.json();
     const code = String(guestCode ?? galleryCode ?? "");
-    const limit = Math.min(Math.max(Number(requestedLimit) || 30, 1), 60);
+    const limit = Math.min(Math.max(Number(requestedLimit) || 30, 1), 120);
     const offset = Math.max(Number(requestedOffset) || 0, 0);
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0] ?? "local";
     if (!checkRateLimit(`gallery:${ip}`, 40, 60000).allowed) {

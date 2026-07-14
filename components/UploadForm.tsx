@@ -202,13 +202,16 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(locked ? "Ten link wygląda na nieprawidłowy. Poproś parę młodą o poprawny kod." : null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [retryPending, setRetryPending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const galleryUrl = galleryHref(slug, accessCode.trim() || undefined);
+  const submitLabel = loading ? "Dodajemy pliki…" : retryPending && selectedFiles.length > 0 ? "Ponów wysyłanie" : "Dodaj pliki";
 
   function handleFilesChange(files: File[]) {
     setSelectedFiles(files);
     setUploadedCount(0);
     setError(null);
+    setRetryPending(false);
   }
 
   async function submit() {
@@ -216,7 +219,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     let pendingStoragePaths: string[] = [];
     let completedCount = 0;
     const totalCount = selectedFiles.length;
-    setLoading(true); setUploadedCount(0); setError(null); setSuccess(false);
+    setLoading(true); setUploadedCount(0); setError(null); setSuccess(false); setRetryPending(false);
     try {
       if (!guestName.trim()) throw new UserVisibleError("Podaj swoje imię, żebyśmy wiedzieli, kto dodał zdjęcia.");
       if (!accessCode.trim()) throw new UserVisibleError("Wpisz kod weselny, aby dodać zdjęcia.");
@@ -277,6 +280,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       setGuestName("");
       setConsent(false);
       setSelectedFiles([]);
+      setRetryPending(false);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
       if (guestId) {
@@ -287,6 +291,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         : uploadErrorMessage(e, guestId));
       if (completedCount > 0) {
         setSelectedFiles((files) => files.slice(completedCount));
+        setRetryPending(true);
         if (fileRef.current) fileRef.current.value = "";
       }
     }
@@ -333,7 +338,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     {!codeConfirmed && <div className="floating-field"><label htmlFor="accessCode">Kod weselny</label><input id="accessCode" name="accessCode" value={accessCode} onChange={(e)=>setAccessCode(e.target.value)} placeholder="Wpisz kod weselny" /></div>}
     <UploadDropzone fileRef={fileRef} fileCount={selectedFiles.length} uploading={loading} progressLabel={selectedFiles.length > 0 ? `Wysłano ${uploadedCount} / ${selectedFiles.length}` : undefined} onChange={handleFilesChange} />
     <label className="consent-row"><input type="checkbox" checked={consent} onChange={(e)=>setConsent(e.target.checked)} /> <span>Wyrażam zgodę na dodanie zdjęć i filmów do prywatnej galerii weselnej.</span><span className="consent-heart-icon" aria-hidden="true" /></label>
-    <button disabled={loading || locked} className="btn btn-primary cta-button"><span className="cta-camera-icon" aria-hidden="true" /><span className="cta-button-label">{loading ? "Dodajemy pliki…" : "Dodaj pliki"}</span></button>
+    <button disabled={loading || locked} className="btn btn-primary cta-button"><span className="cta-camera-icon" aria-hidden="true" /><span className="cta-button-label">{submitLabel}</span></button>
     {!loading && <Link className="text-link" href={galleryUrl}>Zobacz galerię</Link>}
   </form>;
 }
