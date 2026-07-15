@@ -10,8 +10,8 @@ export default function EmptyGalleryState({ href }: { href: string }) {
         <path className="empty-camera-heart-fill" d="M48 54.1s-6.55-4.2-8.52-8.02c-1.58-3.05.22-6.33 3.57-6.33 1.93 0 3.16 1.04 3.81 1.9.28.36.84.36 1.12 0 .65-.86 1.88-1.9 3.81-1.9 3.35 0 5.15 3.28 3.57 6.33C54.55 49.9 48 54.1 48 54.1Z" />
       </svg>
     </div>
-    <h2>Jeszcze nie ma zdjęć w galerii</h2>
-    <p>Bądź pierwszy i dodaj wspomnienie z wesela</p>
-    <Link className="btn btn-primary" href={href}>Dodaj zdjęcia</Link>
+    <h2>Jeszcze nie ma wspomnień w galerii</h2>
+    <p>Bądź pierwszy i dodaj zdjęcie albo film z wesela</p>
+    <Link className="btn btn-primary" href={href}>Dodaj wspomnienia</Link>
   </section>;
 }
