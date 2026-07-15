@@ -205,7 +205,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const [retryPending, setRetryPending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const galleryUrl = galleryHref(slug, accessCode.trim() || undefined);
-  const submitLabel = loading ? "Dodajemy pliki…" : retryPending && selectedFiles.length > 0 ? "Ponów wysyłanie" : "Dodaj pliki";
+  const submitLabel = loading ? "Dodajemy wspomnienia…" : retryPending && selectedFiles.length > 0 ? "Ponów wysyłanie" : "Dodaj wspomnienia";
 
   function handleFilesChange(files: File[]) {
     setSelectedFiles(files);
@@ -310,7 +310,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       <p>Pliki są już w galerii <span className="success-inline-heart" aria-hidden="true" /></p>
       <div className="success-actions">
         <Link className="btn btn-primary" href={galleryUrl}>Zobacz galerię</Link>
-        <button className="btn btn-ghost" onClick={() => setSuccess(false)}>Dodaj kolejne pliki</button>
+        <button className="btn btn-ghost" onClick={() => setSuccess(false)}>Dodaj kolejne wspomnienia</button>
       </div>
     <div className="heart-divider" aria-hidden="true"><span /><i className="heart-divider-icon" /><span /></div>
     </section>;
@@ -318,7 +318,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
 
   return <form id="upload" onSubmit={handleSubmit} className="upload-card" aria-busy={loading}>
     <div className="card-heading">
-      <h2>Dodaj zdjęcia i filmy do wspólnej galerii</h2>
+      <h2>Dodaj wspomnienia do wspólnej galerii</h2>
       <p>Wpisz imię, wybierz ulubione kadry i wyślij je jednym kliknięciem.</p>
     </div>
     {error && <p className="error upload-error-top" role="alert">

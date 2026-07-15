@@ -29,12 +29,12 @@ export default function WeddingLanding({ uploadHref, galleryHref }: { uploadHref
         <p className="landing-overline">Natalia &amp; Robert</p>
         <h1 className="landing-title">Natalia &amp;<br />Robert</h1>
         <p className="landing-subtitle">Wspólna galeria weselna</p>
-        <p className="landing-description">Podziel się zdjęciami z naszego dnia<br />i twórzmy razem piękne wspomnienia.</p>
+        <p className="landing-description">Podziel się wspomnieniami z naszego dnia<br />i twórzmy razem wspólną galerię.</p>
 
         <div className="landing-actions">
-          <Link className="landing-button landing-button-primary" href={uploadHref} aria-label="Dodaj zdjęcia">
+          <Link className="landing-button landing-button-primary" href={uploadHref} aria-label="Dodaj wspomnienia">
             <CameraIcon />
-            <span className="landing-primary-label">Dodaj zdjęcia</span>
+            <span className="landing-primary-label">Dodaj wspomnienia</span>
           </Link>
           <Link className="landing-button landing-button-secondary" href={galleryHref} aria-label="Zobacz galerię">
             <ImagesIcon />

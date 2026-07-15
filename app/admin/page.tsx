@@ -19,6 +19,11 @@ type Photo = {
   guests?: { name?: string };
   events?: { title?: string; slug?: string };
 };
+type AdminEvent = {
+  slug?: string;
+  title?: string;
+  domain?: string;
+};
 
 const FILTERS: Array<{ value: FilterStatus; label: string }> = [
   { value: "all", label: "Wszystkie" },
@@ -42,6 +47,27 @@ function isVideo(photo: Photo) {
   return String(photo.mime_type ?? "").startsWith("video/");
 }
 
+function uploadUrl(baseUrl: string, slug: string, code: string) {
+  const cleanBase = baseUrl.trim().replace(/\/+$/, "");
+  const cleanSlug = slug.trim();
+  const cleanCode = code.trim();
+  if (!cleanBase || !cleanSlug) return "";
+
+  const params = new URLSearchParams();
+  if (cleanCode) params.set("code", cleanCode);
+  const query = params.toString();
+  return `${cleanBase}/wedding/${encodeURIComponent(cleanSlug)}${query ? `?${query}` : ""}`;
+}
+
+function qrDownloadHref(url: string, slug: string, format: "svg" | "png") {
+  const params = new URLSearchParams({
+    url,
+    format,
+    filename: `${slug || "wedding"}-upload-qr`,
+  });
+  return `/api/admin/qr?${params.toString()}`;
+}
+
 export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,6 +79,12 @@ export default function AdminPage() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [actionId, setActionId] = useState("");
   const [error, setError] = useState("");
+  const [adminEvent, setAdminEvent] = useState<AdminEvent | null>(null);
+  const [baseUrl, setBaseUrl] = useState(() => typeof window === "undefined" ? "" : window.location.origin);
+  const [qrSlug, setQrSlug] = useState("");
+  const [qrCode, setQrCode] = useState("");
+  const [copiedQrUrl, setCopiedQrUrl] = useState(false);
+  const qrUrl = uploadUrl(baseUrl, qrSlug, qrCode);
 
   async function load(currentStatus = status) {
     setLoading(true);
@@ -76,6 +108,24 @@ export default function AdminPage() {
     }
   }
 
+  async function loadEvent() {
+    try {
+      const res = await fetch("/api/admin/event", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) return;
+      const event = data.event ?? {};
+      setAdminEvent(event);
+      setQrSlug((current) => current || event.slug || "");
+      setBaseUrl((current) => {
+        if (current && !current.includes("localhost")) return current;
+        if (event.domain) return `https://${event.domain}`;
+        return current;
+      });
+    } catch {
+      // QR można nadal uzupełnić ręcznie.
+    }
+  }
+
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoggingIn(true);
@@ -90,6 +140,7 @@ export default function AdminPage() {
       if (!res.ok) throw new Error(data.error ?? "Nie udało się zalogować.");
       setSessionEmail(data.user?.email ?? email);
       setPassword("");
+      await loadEvent();
       await load(status);
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "Nie udało się zalogować.");
@@ -104,6 +155,14 @@ export default function AdminPage() {
     setPhotos([]);
     setCounts(EMPTY_COUNTS);
     setPassword("");
+    setAdminEvent(null);
+  }
+
+  async function copyQrUrl() {
+    if (!qrUrl) return;
+    await navigator.clipboard.writeText(qrUrl);
+    setCopiedQrUrl(true);
+    window.setTimeout(() => setCopiedQrUrl(false), 1800);
   }
 
   async function act(photo: Photo, nextStatus: AdminAction) {
@@ -165,6 +224,34 @@ export default function AdminPage() {
         </div>
         <button className="btn btn-ghost admin-logout" onClick={logout}>Wyloguj</button>
       </header>
+
+      <section className="admin-qr-card">
+        <div>
+          <p className="admin-eyebrow">QR dla gości</p>
+          <h2>{adminEvent?.title ? `Upload: ${adminEvent.title}` : "Link do dodawania plików"}</h2>
+          <p className="admin-muted">Wpisz kod weselny, pobierz QR i wrzuć go na plakat albo karteczki na stoły.</p>
+        </div>
+        <div className="admin-qr-form">
+          <label>
+            Adres strony
+            <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://natalia-robert.pics" />
+          </label>
+          <label>
+            Slug wydarzenia
+            <input value={qrSlug} onChange={(event) => setQrSlug(event.target.value)} placeholder="natalia-robert" />
+          </label>
+          <label>
+            Kod weselny
+            <input value={qrCode} onChange={(event) => setQrCode(event.target.value)} placeholder="Kod dla gości" />
+          </label>
+        </div>
+        {qrUrl && <p className="admin-qr-url">{qrUrl}</p>}
+        <div className="admin-qr-actions">
+          <button className="btn btn-ghost" onClick={copyQrUrl} disabled={!qrUrl}>{copiedQrUrl ? "Skopiowano" : "Kopiuj link"}</button>
+          <a className={`btn btn-primary${!qrUrl ? " is-disabled" : ""}`} href={qrUrl ? qrDownloadHref(qrUrl, qrSlug, "svg") : undefined} aria-disabled={!qrUrl}>Pobierz QR SVG</a>
+          <a className={`btn btn-ghost${!qrUrl ? " is-disabled" : ""}`} href={qrUrl ? qrDownloadHref(qrUrl, qrSlug, "png") : undefined} aria-disabled={!qrUrl}>Pobierz PNG</a>
+        </div>
+      </section>
 
       <div className="admin-filters" aria-label="Filtr statusu plików">
         {FILTERS.map((filter) => <button key={filter.value} className={status === filter.value ? "is-active" : ""} onClick={() => setStatus(filter.value)}>

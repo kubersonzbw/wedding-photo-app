@@ -158,6 +158,14 @@
 .admin-error{margin:0;padding:12px 14px;border-radius:16px;background:rgba(255,247,244,.72);border:1px solid rgba(229,141,145,.34);color:#96463f;font-family:var(--font-inter),Inter,sans-serif;font-size:13px;line-height:1.4}
 .admin-logout{min-height:40px;padding:0 14px;color:#8f6814;background:transparent;border:1.4px solid rgba(212,175,55,.52);box-shadow:none;font-size:11px;white-space:nowrap}
 .admin-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.admin-qr-card{display:grid;gap:14px;padding:14px;border-radius:22px;background:rgba(255,255,255,.36);border:1px solid rgba(212,175,55,.28);box-shadow:0 12px 26px rgba(132,94,68,.052),inset 0 1px 0 rgba(255,255,255,.52)}
+.admin-qr-card h2{margin:0;color:#3a2a25;font-family:var(--font-playfair),serif;font-size:26px;font-weight:500;line-height:1.02;letter-spacing:-.035em}
+.admin-qr-form{display:grid;gap:10px}
+.admin-qr-form label{display:grid;gap:7px;color:#4f382f;font-family:var(--font-inter),Inter,sans-serif;font-size:12px;font-weight:800}
+.admin-qr-url{margin:0;padding:10px 12px;border-radius:14px;background:rgba(255,253,249,.64);border:1px solid rgba(212,175,55,.22);color:#6f5145;font-family:var(--font-inter),Inter,sans-serif;font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+.admin-qr-actions{display:grid;grid-template-columns:1fr;gap:8px}
+.admin-qr-actions .btn{min-height:42px;border-radius:999px;text-align:center;text-decoration:none}
+.admin-qr-actions .is-disabled{opacity:.45;pointer-events:none}
 .admin-filters button{display:flex;align-items:center;justify-content:space-between;min-height:46px;padding:0 13px;border-radius:18px;border:1px solid rgba(212,175,55,.30);background:rgba(255,255,255,.32);color:#5d463c;font-family:var(--font-inter),Inter,sans-serif;font-size:12px;font-weight:800;box-shadow:inset 0 1px 0 rgba(255,255,255,.50)}
 .admin-filters button.is-active{color:#8f6814;border-color:rgba(212,175,55,.62);background:rgba(255,250,244,.62)}
 .admin-filters strong{font-size:11px;color:inherit}
@@ -175,4 +183,4 @@
 .admin-actions button{min-height:34px;border-radius:999px;border:1px solid rgba(212,175,55,.42);background:rgba(255,255,255,.38);padding:0 11px;color:#7d5b12;font-family:var(--font-inter),Inter,sans-serif;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .admin-actions button.danger{border-color:rgba(229,141,145,.38);color:#9f5049}
 .admin-actions button:disabled{opacity:.42;cursor:not-allowed}
-@media(min-width:720px){.admin-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.admin-card{grid-template-columns:128px minmax(0,1fr)}.admin-card img,.admin-card video,.admin-missing-photo{width:128px;height:154px}}
+@media(min-width:720px){.admin-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.admin-qr-form{grid-template-columns:1.3fr .9fr .8fr}.admin-qr-actions{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-card{grid-template-columns:128px minmax(0,1fr)}.admin-card img,.admin-card video,.admin-missing-photo{width:128px;height:154px}}
