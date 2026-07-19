@@ -13,6 +13,8 @@ const PULL_REFRESH_THRESHOLD = 68;
 const PULL_REFRESH_MAX = 88;
 type Photo = { id: string; url: string; thumbnailUrl?: string; guestName?: string; createdAt: string };
 type GalleryPhoto = Photo & { mediaType?: "image" | "video"; mimeType?: string };
+type GalleryLoadResult = { ok: boolean; totalCount: number };
+const NEW_MEMORY_CHECK_INTERVAL = 45000;
 
 function photoCountLabel(count: number) {
   if (count === 1) return "1 plik";
@@ -48,12 +50,15 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   const [loadingMore, setLoadingMore] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [pullRefreshing, setPullRefreshing] = useState(false);
+  const [newMemoriesAvailable, setNewMemoriesAvailable] = useState(false);
+  const [noticeRefreshing, setNoticeRefreshing] = useState(false);
   const [mediaRefreshing, setMediaRefreshing] = useState(false);
   const [hasRequested, setHasRequested] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const active = activeIndex === null ? null : photos[activeIndex];
   const initialLoadStarted = useRef(false);
   const mediaRefreshInFlight = useRef(false);
+  const newMemoryCheckInFlight = useRef(false);
   const pullStartY = useRef<number | null>(null);
   const uploadParams = new URLSearchParams({ returnTo: "gallery" });
   if (verifiedCode) uploadParams.set("code", verifiedCode);
@@ -65,7 +70,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   const errorDescription = invalidCodeError ? "Sprawdź kod weselny i spróbuj ponownie." : "Spróbuj ponownie za chwilę.";
   const showCodeCard = !initialCode && !verifiedCode;
 
-  const load = useCallback(async (nextSlug = slug, nextGuestCode = draftCode, append = false, silent = false) => {
+  const load = useCallback(async (nextSlug = slug, nextGuestCode = draftCode, append = false, silent = false): Promise<GalleryLoadResult> => {
     const codeToVerify = nextGuestCode.trim();
     const offset = append ? photos.length : 0;
     if (append) setLoadingMore(true);
@@ -82,15 +87,19 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
           setHasMore(false);
           setError(data.error ?? "Nie udało się pobrać galerii.");
         }
+        return { ok: false, totalCount: 0 };
       }
       else {
         const nextPhotos = data.photos ?? [];
+        const nextTotalCount = Number(data.totalCount) || 0;
         setPhotos((current) => append ? mergeUniquePhotos(current, nextPhotos) : nextPhotos);
-        setTotalCount(Number(data.totalCount) || 0);
+        setTotalCount(nextTotalCount);
         setHasMore(Boolean(data.hasMore));
         setVerifiedCode(codeToVerify);
         setDraftCode(codeToVerify);
         setHasRequested(true);
+        if (!append) setNewMemoriesAvailable(false);
+        return { ok: true, totalCount: nextTotalCount };
       }
     } catch {
       if (!append && !silent) {
@@ -100,9 +109,24 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
         setHasMore(false);
         setError("Nie udało się pobrać galerii.");
       }
+      return { ok: false, totalCount: 0 };
     }
     finally { if (append) setLoadingMore(false); else if (!silent) setLoading(false); }
   }, [draftCode, photos.length, slug]);
+
+  const checkForNewMemories = useCallback(async () => {
+    if (!verifiedCode || newMemoryCheckInFlight.current || loading || loadingMore || pullRefreshing || noticeRefreshing) return;
+    newMemoryCheckInFlight.current = true;
+    try {
+      const res = await fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, guestCode: verifiedCode, limit: 1, offset: 0 }) });
+      const data = await res.json();
+      if (!res.ok) return;
+      const nextTotalCount = Number(data.totalCount) || 0;
+      if (nextTotalCount > totalCount) setNewMemoriesAvailable(true);
+    } finally {
+      newMemoryCheckInFlight.current = false;
+    }
+  }, [loading, loadingMore, noticeRefreshing, pullRefreshing, slug, totalCount, verifiedCode]);
 
   const refreshMediaUrls = useCallback(async () => {
     if (!verifiedCode || mediaRefreshInFlight.current) return;
@@ -176,15 +200,26 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     });
   }
 
+  function refreshNewMemories() {
+    setNoticeRefreshing(true);
+    void load(slug, verifiedCode, false, true).finally(() => setNoticeRefreshing(false));
+  }
+
   useEffect(() => { if (!initialCode || initialLoadStarted.current) return; initialLoadStarted.current = true; void load(initialSlug, initialCode); }, [initialSlug, initialCode, load]);
+  useEffect(() => {
+    if (!hasRequested || !verifiedCode) return;
+    const timer = window.setInterval(() => { void checkForNewMemories(); }, NEW_MEMORY_CHECK_INTERVAL);
+    return () => window.clearInterval(timer);
+  }, [checkForNewMemories, hasRequested, verifiedCode]);
   useEffect(() => { if (activeIndex === null) return; function onKeyDown(event: KeyboardEvent) { if (event.key === "Escape") setActiveIndex(null); if (event.key === "ArrowRight") setActiveIndex((c) => c === null ? c : (c + 1) % photos.length); if (event.key === "ArrowLeft") setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [activeIndex, photos.length]);
 
   return <WeddingShell wide screen>
     <div className="gallery-refresh-surface" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
       <div className={`pull-refresh-indicator${pullDistance > 0 || pullRefreshing ? " is-visible" : ""}${pullRefreshing ? " is-refreshing" : ""}${pullDistance >= PULL_REFRESH_THRESHOLD ? " is-ready" : ""}`} aria-hidden="true">
         <span className="pull-refresh-spinner" />
-        <span>{pullRefreshing ? "Odświeżamy galerię…" : pullDistance >= PULL_REFRESH_THRESHOLD ? "Puść, aby odświeżyć" : "Przeciągnij, aby odświeżyć"}</span>
+        <span>{pullRefreshing ? "Sprawdzamy wspomnienia…" : pullDistance >= PULL_REFRESH_THRESHOLD ? "Puść, aby sprawdzić" : "Przeciągnij, aby sprawdzić"}</span>
       </div>
+      {newMemoriesAvailable && <div className="gallery-refresh-toast" role="status" aria-live="polite"><span>Pojawiły się nowe wspomnienia</span><button onClick={refreshNewMemories} disabled={noticeRefreshing}>{noticeRefreshing ? "Odświeżamy…" : "Odśwież"}</button></div>}
       <div className="gallery-refresh-content" style={{ transform: pullDistance ? `translateY(${pullDistance}px)` : undefined }}>
         <header className="mobile-topbar">
           <Link href={landingHref} aria-label="Wróć do ekranu startowego">‹</Link>
