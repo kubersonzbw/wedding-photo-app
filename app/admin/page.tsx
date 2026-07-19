@@ -31,6 +31,7 @@ const FILTERS: Array<{ value: FilterStatus; label: string }> = [
   { value: "hidden", label: "Ukryte" },
 ];
 const EMPTY_COUNTS: PhotoCounts = { all: 0, approved: 0, hidden: 0 };
+const PAGE_SIZE = 30;
 
 function statusLabel(status: PhotoStatus) {
   if (status === "approved") return "Widoczne";
@@ -59,12 +60,13 @@ function uploadUrl(baseUrl: string, slug: string, code: string) {
   return `${cleanBase}/wedding/${encodeURIComponent(cleanSlug)}${query ? `?${query}` : ""}`;
 }
 
-function qrDownloadHref(url: string, slug: string, format: "svg" | "png") {
+function qrFileHref(url: string, slug: string, format: "svg" | "png", disposition: "attachment" | "inline" = "attachment") {
   const params = new URLSearchParams({
     url,
     format,
     filename: `${slug || "wedding"}-upload-qr`,
   });
+  if (disposition === "inline") params.set("disposition", "inline");
   return `/api/admin/qr?${params.toString()}`;
 }
 
@@ -76,53 +78,65 @@ export default function AdminPage() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [counts, setCounts] = useState<PhotoCounts>(EMPTY_COUNTS);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [actionId, setActionId] = useState("");
   const [error, setError] = useState("");
+  const [hasMore, setHasMore] = useState(false);
   const [adminEvent, setAdminEvent] = useState<AdminEvent | null>(null);
-  const [baseUrl, setBaseUrl] = useState(() => typeof window === "undefined" ? "" : window.location.origin);
+  const [eventError, setEventError] = useState("");
+  const [baseUrl] = useState(() => typeof window === "undefined" ? "" : window.location.origin);
   const [qrSlug, setQrSlug] = useState("");
   const [qrCode, setQrCode] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
   const [copiedQrUrl, setCopiedQrUrl] = useState(false);
   const qrUrl = uploadUrl(baseUrl, qrSlug, qrCode);
 
-  async function load(currentStatus = status) {
-    setLoading(true);
+  async function load(currentStatus = status, append = false) {
+    const offset = append ? photos.length : 0;
+    if (append) setLoadingMore(true);
+    else {
+      setLoading(true);
+      setPhotos([]);
+      setHasMore(false);
+    }
     setError("");
     try {
-      const res = await fetch(`/api/admin/photos?status=${currentStatus}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/photos?status=${currentStatus}&limit=${PAGE_SIZE}&offset=${offset}`, { cache: "no-store" });
       const data = await res.json();
       if (res.status === 401) {
         setSessionEmail("");
         setPhotos([]);
         setCounts(EMPTY_COUNTS);
+        setHasMore(false);
         return;
       }
       if (!res.ok) throw new Error(data.error ?? "Nie udało się pobrać zdjęć.");
-      setPhotos(data.photos ?? []);
+      setPhotos((current) => append ? [...current, ...(data.photos ?? [])] : data.photos ?? []);
       setCounts({ ...EMPTY_COUNTS, ...(data.counts ?? {}) });
+      setHasMore(Boolean(data.hasMore));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Nie udało się pobrać zdjęć.");
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
   }
 
   async function loadEvent() {
+    setEventError("");
     try {
       const res = await fetch("/api/admin/event", { cache: "no-store" });
       const data = await res.json();
-      if (!res.ok) return;
+      if (!res.ok) {
+        setEventError(data.error ?? "Nie udało się rozpoznać wydarzenia.");
+        return;
+      }
       const event = data.event ?? {};
       setAdminEvent(event);
       setQrSlug((current) => current || event.slug || "");
-      setBaseUrl((current) => {
-        if (current && !current.includes("localhost")) return current;
-        if (event.domain) return `https://${event.domain}`;
-        return current;
-      });
     } catch {
-      // QR można nadal uzupełnić ręcznie.
+      setEventError("Nie udało się rozpoznać wydarzenia.");
     }
   }
 
@@ -156,6 +170,8 @@ export default function AdminPage() {
     setCounts(EMPTY_COUNTS);
     setPassword("");
     setAdminEvent(null);
+    setEventError("");
+    setQrOpen(false);
   }
 
   async function copyQrUrl() {
@@ -177,6 +193,7 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Nie udało się zapisać zmian.");
+      setPhotos((current) => current.filter((item) => item.id !== photo.id));
       await load(status);
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Nie udało się zapisać zmian.");
@@ -193,6 +210,15 @@ export default function AdminPage() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
+
+  useEffect(() => {
+    if (!qrOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setQrOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [qrOpen]);
 
   if (!sessionEmail) {
     return <WeddingShell wide screen>
@@ -220,43 +246,18 @@ export default function AdminPage() {
       <header className="admin-header">
         <div>
           <p className="admin-eyebrow">Panel admina</p>
-          <h1>Zarządzanie galerią</h1>
+          <h1>Galeria wspomnień</h1>
         </div>
-        <button className="btn btn-ghost admin-logout" onClick={logout}>Wyloguj</button>
+        <div className="admin-header-actions">
+          <button className="admin-tool-button" onClick={() => setQrOpen(true)}>QR</button>
+          <button className="btn btn-ghost admin-logout" onClick={logout}>Wyloguj</button>
+        </div>
       </header>
-
-      <section className="admin-qr-card">
-        <div>
-          <p className="admin-eyebrow">QR dla gości</p>
-          <h2>{adminEvent?.title ? `Upload: ${adminEvent.title}` : "Link do dodawania plików"}</h2>
-          <p className="admin-muted">Wpisz kod weselny, pobierz QR i wrzuć go na plakat albo karteczki na stoły.</p>
-        </div>
-        <div className="admin-qr-form">
-          <label>
-            Adres strony
-            <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://natalia-robert.pics" />
-          </label>
-          <label>
-            Slug wydarzenia
-            <input value={qrSlug} onChange={(event) => setQrSlug(event.target.value)} placeholder="natalia-robert" />
-          </label>
-          <label>
-            Kod weselny
-            <input value={qrCode} onChange={(event) => setQrCode(event.target.value)} placeholder="Kod dla gości" />
-          </label>
-        </div>
-        {qrUrl && <p className="admin-qr-url">{qrUrl}</p>}
-        <div className="admin-qr-actions">
-          <button className="btn btn-ghost" onClick={copyQrUrl} disabled={!qrUrl}>{copiedQrUrl ? "Skopiowano" : "Kopiuj link"}</button>
-          <a className={`btn btn-primary${!qrUrl ? " is-disabled" : ""}`} href={qrUrl ? qrDownloadHref(qrUrl, qrSlug, "svg") : undefined} aria-disabled={!qrUrl}>Pobierz QR SVG</a>
-          <a className={`btn btn-ghost${!qrUrl ? " is-disabled" : ""}`} href={qrUrl ? qrDownloadHref(qrUrl, qrSlug, "png") : undefined} aria-disabled={!qrUrl}>Pobierz PNG</a>
-        </div>
-      </section>
 
       <div className="admin-filters" aria-label="Filtr statusu plików">
         {FILTERS.map((filter) => <button key={filter.value} className={status === filter.value ? "is-active" : ""} onClick={() => setStatus(filter.value)}>
           <span>{filter.label}</span>
-          <strong>{counts[filter.value]}</strong>
+          <small>{counts[filter.value]}</small>
         </button>)}
       </div>
 
@@ -264,25 +265,49 @@ export default function AdminPage() {
       {loading && <p className="admin-muted admin-loading">Ładujemy pliki...</p>}
       {!loading && photos.length === 0 && <p className="admin-empty">Brak plików w tym widoku.</p>}
 
-      <div className="admin-list">
-        {photos.map((photo) => <article className="admin-card" key={photo.id}>
+      <div className="admin-memory-grid">
+        {photos.map((photo) => <article className="admin-memory-tile" key={photo.id}>
           {photo.url
-            ? isVideo(photo) ? <video src={photo.url} controls playsInline preload="metadata" /> : <img src={photo.url} alt="Podgląd zdjęcia" />
+            ? isVideo(photo) ? <video src={photo.url} muted playsInline preload="metadata" /> : <img src={photo.url} alt="Podgląd pliku" loading="lazy" decoding="async" />
             : <div className="admin-missing-photo">Brak pliku w Storage</div>}
-          <div className="admin-card-body">
-            <div>
-              <b>{photo.guests?.name ?? "Gość"}</b>
-              <p>{formatDate(photo.created_at)} · {statusLabel(photo.status)}</p>
-              {photo.original_filename && <small>{photo.original_filename}</small>}
-            </div>
-            <div className="admin-actions">
-              <button onClick={() => act(photo, "approved")} disabled={actionId === photo.id || photo.status === "approved"}>Pokaż</button>
-              <button onClick={() => act(photo, "hidden")} disabled={actionId === photo.id || photo.status === "hidden"}>Ukryj</button>
-              <button className="danger" onClick={() => act(photo, "deleted")} disabled={actionId === photo.id}>Usuń</button>
-            </div>
+          {isVideo(photo) && <span className="memory-video-badge" aria-hidden="true">▶</span>}
+          <div className="admin-memory-meta">
+            <b>{photo.guests?.name ?? "Gość"}</b>
+            <span>{formatDate(photo.created_at)} · {statusLabel(photo.status)}</span>
+          </div>
+          <div className="admin-actions">
+            <button onClick={() => act(photo, "approved")} disabled={actionId === photo.id || photo.status === "approved"}>Pokaż</button>
+            <button onClick={() => act(photo, "hidden")} disabled={actionId === photo.id || photo.status === "hidden"}>Ukryj</button>
+            <button className="danger" onClick={() => act(photo, "deleted")} disabled={actionId === photo.id}>Usuń</button>
           </div>
         </article>)}
       </div>
+      {!loading && photos.length > 0 && hasMore && <button className="btn btn-ghost admin-load-more" onClick={() => load(status, true)} disabled={loadingMore}>{loadingMore ? "Ładujemy..." : "Pokaż więcej"}</button>}
     </section>
+    {qrOpen && <div className="admin-qr-overlay" onClick={() => setQrOpen(false)}>
+      <section className="admin-qr-sheet" role="dialog" aria-modal="true" aria-label="QR dla gości" onClick={(event) => event.stopPropagation()}>
+        <span className="admin-qr-sheet-handle" aria-hidden="true" />
+        <div className="admin-qr-sheet-top">
+          <div>
+            <p className="admin-eyebrow">QR dla gości</p>
+            <h2>{adminEvent?.title ?? "Dodawanie wspomnień"}</h2>
+          </div>
+          <button className="round-control" onClick={() => setQrOpen(false)} aria-label="Zamknij QR">×</button>
+        </div>
+
+        {eventError && <p className="admin-error">{eventError}</p>}
+
+        <label className="admin-qr-code-field">
+          Kod dla gości
+          <input value={qrCode} onChange={(event) => setQrCode(event.target.value)} placeholder="Wpisz kod weselny" />
+        </label>
+
+        <div className="admin-qr-actions">
+          <a className={`btn btn-primary${!qrUrl ? " is-disabled" : ""}`} href={qrUrl ? qrFileHref(qrUrl, qrSlug, "png") : undefined} aria-disabled={!qrUrl}>Pobierz QR</a>
+          <button className="btn btn-ghost" onClick={copyQrUrl} disabled={!qrUrl}>{copiedQrUrl ? "Skopiowano" : "Kopiuj link"}</button>
+        </div>
+
+      </section>
+    </div>}
   </WeddingShell>;
 }

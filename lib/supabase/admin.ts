@@ -67,9 +67,10 @@ export async function deleteGuest(guestId: string) {
   return supabaseFetch(`/rest/v1/guests?id=eq.${encodeURIComponent(guestId)}`, { method: "DELETE" });
 }
 
-export async function listPhotos(status?: string) {
+export async function listPhotos(status?: string, limit?: number, offset = 0) {
   const filter = status && status !== "all" ? `&status=eq.${encodeURIComponent(status)}` : "&status=neq.deleted";
-  return supabaseFetch(`/rest/v1/photos?select=*,guests(name),events(slug,title)&order=created_at.desc${filter}`);
+  const pagination = limit ? `&limit=${limit}&offset=${offset}` : "";
+  return supabaseFetch(`/rest/v1/photos?select=*,guests(name),events(slug,title)&order=created_at.desc${filter}${pagination}`);
 }
 
 export async function countPhotos(status?: PhotoStatus) {

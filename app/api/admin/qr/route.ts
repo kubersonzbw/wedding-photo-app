@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     const targetUrl = params.get("url")?.trim();
     const format = params.get("format") === "png" ? "png" : "svg";
     const filename = safeFilename(params.get("filename") ?? "qr-wedding-upload");
+    const disposition = params.get("disposition") === "inline" ? "inline" : "attachment";
 
     if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
       return Response.json({ error: "Podaj poprawny link do QR." }, { status: 400 });
@@ -28,14 +29,14 @@ export async function GET(request: Request) {
         errorCorrectionLevel: "M",
         margin: 2,
         width: 1024,
-        color: { dark: "#3a2a25", light: "#fffdf9" },
+        color: { dark: "#000000", light: "#ffffff" },
       });
 
       const body = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength) as ArrayBuffer;
       return new Response(body, {
         headers: {
           "Content-Type": "image/png",
-          "Content-Disposition": `attachment; filename="${filename}.png"`,
+          "Content-Disposition": `${disposition}; filename="${filename}.png"`,
           "Cache-Control": "no-store",
         },
       });
@@ -46,13 +47,13 @@ export async function GET(request: Request) {
       errorCorrectionLevel: "M",
       margin: 2,
       width: 1024,
-      color: { dark: "#3a2a25", light: "#fffdf9" },
+      color: { dark: "#000000", light: "#ffffff" },
     });
 
     return new Response(svg, {
       headers: {
         "Content-Type": "image/svg+xml; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}.svg"`,
+        "Content-Disposition": `${disposition}; filename="${filename}.svg"`,
         "Cache-Control": "no-store",
       },
     });

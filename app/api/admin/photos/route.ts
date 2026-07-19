@@ -32,10 +32,14 @@ async function adminCounts() {
 export async function GET(request: Request) {
   if (!(await guard())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const statusParam = new URL(request.url).searchParams.get("status") ?? "all";
+    const searchParams = new URL(request.url).searchParams;
+    const statusParam = searchParams.get("status") ?? "all";
     const status = isPhotoStatus(statusParam) ? statusParam : "all";
-    const rows = await listPhotos(status);
-    const [photos, counts] = await Promise.all([Promise.all(rows.map(async (p: Record<string, unknown>) => {
+    const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 30, 1), 60);
+    const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
+    const rows = await listPhotos(status, limit + 1, offset);
+    const visibleRows = rows.slice(0, limit);
+    const [photos, counts] = await Promise.all([Promise.all(visibleRows.map(async (p: Record<string, unknown>) => {
       const storagePath = String(p.storage_path ?? "");
       let url = "";
       if (storagePath) {
@@ -43,7 +47,7 @@ export async function GET(request: Request) {
       }
       return { ...p, url };
     })), adminCounts()]);
-    return Response.json({ photos, counts });
+    return Response.json({ photos, counts, hasMore: rows.length > limit });
   } catch {
     return Response.json({ error: "Nie udało się pobrać zdjęć." }, { status: 500 });
   }
