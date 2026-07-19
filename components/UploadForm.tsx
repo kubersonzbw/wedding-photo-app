@@ -219,6 +219,11 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     let pendingStoragePaths: string[] = [];
     let completedCount = 0;
     const totalCount = selectedFiles.length;
+    const uploadSummary = {
+      totalCount,
+      imageCount: selectedFiles.filter(isImageFile).length,
+      videoCount: selectedFiles.filter(isVideoFile).length,
+    };
     setLoading(true); setUploadedCount(0); setError(null); setSuccess(false); setRetryPending(false);
     try {
       if (!guestName.trim()) throw new UserVisibleError("Podaj swoje imię, żebyśmy wiedzieli, kto dodał zdjęcia.");
@@ -226,7 +231,10 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       if (!consent) throw new UserVisibleError("Zaznacz zgodę, aby dodać pliki do wspólnej galerii.");
       const validation = validatePhotoList(selectedFiles);
       if (validation) throw new UserVisibleError(validation);
-      for (const batch of chunkFiles(selectedFiles, UPLOAD_BATCH_SIZE)) {
+      const batches = chunkFiles(selectedFiles, UPLOAD_BATCH_SIZE);
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const batch = batches[batchIndex];
+        const isLastBatch = batchIndex === batches.length - 1;
         pendingStoragePaths = [];
         const startRes: Response = await fetch("/api/upload/start", {
           method: "POST",
@@ -266,6 +274,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
               type: upload.mimeType,
               size: upload.sizeBytes,
             })),
+            notification: isLastBatch ? uploadSummary : undefined,
           }),
         });
         const completeData = await readApiResponse<{ count: number }>(completeRes);

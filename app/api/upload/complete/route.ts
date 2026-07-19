@@ -1,12 +1,18 @@
-import { getEventBySlug, insertPhotos } from "@/lib/supabase/admin";
+import { getEventBySlug, getGuestById, insertPhotos } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
 import { createAndStoreImageThumbnail, isThumbnailSupported, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { objectExists } from "@/lib/storage/backblaze";
+import { sendUploadNotificationEmail } from "@/lib/notifications/upload-email";
 
 type CompletedUpload = PhotoFileInfo & {
   photoId: string;
   storagePath: string;
+};
+type UploadNotificationPayload = {
+  totalCount: number;
+  imageCount: number;
+  videoCount: number;
 };
 
 class UploadCompleteError extends Error {
@@ -31,6 +37,29 @@ function normalizeUploads(value: unknown): CompletedUpload[] {
   });
 }
 
+function normalizeNotification(value: unknown): UploadNotificationPayload | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<UploadNotificationPayload>;
+  const totalCount = Math.max(0, Math.floor(Number(item.totalCount) || 0));
+  const imageCount = Math.max(0, Math.floor(Number(item.imageCount) || 0));
+  const videoCount = Math.max(0, Math.floor(Number(item.videoCount) || 0));
+  if (totalCount < 1) return null;
+  return {
+    totalCount,
+    imageCount: Math.min(imageCount, totalCount),
+    videoCount: Math.min(videoCount, totalCount),
+  };
+}
+
+function requestOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  if (origin) return origin;
+
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") ?? "https";
+  return host ? `${proto}://${host}` : "";
+}
+
 async function runWithConcurrency<T>(items: T[], limit: number, task: (item: T) => Promise<void>) {
   let nextIndex = 0;
   const workers = Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, async () => {
@@ -46,9 +75,10 @@ async function runWithConcurrency<T>(items: T[], limit: number, task: (item: T) 
 
 export async function POST(request: Request) {
   try {
-    const { slug, accessCode, guestId, uploads: rawUploads } = await request.json();
+    const { slug, accessCode, guestId, uploads: rawUploads, notification: rawNotification } = await request.json();
     const code = String(accessCode ?? "").trim();
     const uploads = normalizeUploads(rawUploads);
+    const notification = normalizeNotification(rawNotification);
 
     if (!slug || !code || !guestId) return Response.json({ error: "Uzupełnij wymagane pola." }, { status: 400 });
     const validation = validatePhotoFileInfoList(uploads);
@@ -85,6 +115,22 @@ export async function POST(request: Request) {
     }));
 
     const inserted = await insertPhotos(photoRows);
+    if (notification) {
+      try {
+        const guest = await getGuestById(event.id, String(guestId));
+        const galleryUrl = `${requestOrigin(request)}/gallery/${encodeURIComponent(String(slug))}?code=${encodeURIComponent(code)}`;
+        await sendUploadNotificationEmail({
+          eventTitle: String(event.title ?? ""),
+          guestName: String(guest?.name ?? "Gość"),
+          totalCount: notification.totalCount,
+          imageCount: notification.imageCount,
+          videoCount: notification.videoCount,
+          galleryUrl,
+        });
+      } catch (notificationError) {
+        console.warn("Nie udało się wysłać powiadomienia o uploadzie.", notificationError);
+      }
+    }
     return Response.json({ ok: true, count: inserted.length });
   } catch (error) {
     if (error instanceof UploadCompleteError) return Response.json({ error: error.message }, { status: error.status });
