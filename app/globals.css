@@ -20,7 +20,6 @@
 .lightbox .lightbox-top .lightbox-download:hover{background:rgba(255,255,255,.14)}
 .lightbox .lightbox-top .lightbox-download:disabled{opacity:.76}
 .lightbox .lightbox-top .lightbox-download.is-saving .lightbox-download-icon{animation:lightboxDownloadSpin .72s linear infinite}
-.lightbox .lightbox-top .lightbox-download.is-saved{background:rgba(255,255,255,.14)}
 @keyframes lightboxDownloadSpin{to{transform:rotate(360deg)}}
 .lightbox-stage{cursor:grab}
 .lightbox-stage:active{cursor:grabbing}

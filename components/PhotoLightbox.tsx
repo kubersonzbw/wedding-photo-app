@@ -14,12 +14,7 @@ type Photo = {
 
 type DownloadPayload = {
   url: string;
-  filename?: string;
-  mimeType?: string;
-  sizeBytes?: number;
 };
-
-const WEB_SHARE_MAX_BYTES = 75 * 1024 * 1024;
 
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", {
   day: "2-digit",
@@ -42,15 +37,6 @@ function mediaPreviewSrc(photo: Photo) {
   return photo.mediaType === "video" ? photo.thumbnailUrl ?? photo.url : photo.url;
 }
 
-function canTryNativeFileShare(payload: DownloadPayload) {
-  const share = navigator.share;
-  const canShare = navigator.canShare;
-  if (typeof share !== "function" || typeof canShare !== "function") return false;
-  if (!window.isSecureContext) return false;
-  if (payload.sizeBytes && payload.sizeBytes > WEB_SHARE_MAX_BYTES) return false;
-  return true;
-}
-
 function startBrowserDownload(url: string) {
   const link = document.createElement("a");
   link.href = url;
@@ -60,22 +46,6 @@ function startBrowserDownload(url: string) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-}
-
-async function tryNativeFileShare(payload: DownloadPayload) {
-  if (!canTryNativeFileShare(payload)) return false;
-
-  const response = await fetch(payload.url);
-  if (!response.ok) throw new Error("Nie udało się pobrać pliku do zapisu.");
-
-  const blob = await response.blob();
-  const file = new File([blob], payload.filename || "wspomnienie", {
-    type: payload.mimeType || blob.type || "application/octet-stream",
-  });
-
-  if (!navigator.canShare?.({ files: [file] })) return false;
-  await navigator.share({ files: [file] });
-  return true;
 }
 
 function MediaSlide({
@@ -196,7 +166,7 @@ export default function PhotoLightbox({
   async function handleDownload() {
     if (downloading || !photo) return;
     setDownloading(true);
-    setDownloadLabel("Zapisujemy...");
+    setDownloadLabel("Pobieranie...");
     try {
       const res = await fetch("/api/gallery/download", {
         method: "POST",
@@ -206,21 +176,8 @@ export default function PhotoLightbox({
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error ?? "Nie udało się przygotować pobierania.");
       const payload: DownloadPayload = data;
-      try {
-        const shared = await tryNativeFileShare(payload);
-        if (shared) {
-          setDownloadLabel("Sprawdź galerię");
-          return;
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          setDownloadLabel("Pobierz");
-          return;
-        }
-      }
-
       startBrowserDownload(payload.url);
-      setDownloadLabel("Sprawdź galerię");
+      setDownloadLabel("Pobierz");
     } catch {
       setDownloadLabel("Pobierz");
       window.alert("Nie udało się przygotować pobierania. Spróbuj ponownie za chwilę.");
@@ -242,7 +199,6 @@ export default function PhotoLightbox({
   }
 
   if (!photo) return null;
-  const saved = downloadLabel === "Sprawdź galerię";
 
   return (
     <div className={`lightbox${controlsHidden ? " is-controls-hidden" : ""}`} role="dialog" aria-modal="true" aria-label="Podgląd pliku">
@@ -252,7 +208,7 @@ export default function PhotoLightbox({
         </strong>
         <div className="lightbox-actions">
           <button
-            className={`round-control lightbox-download${downloading ? " is-saving" : ""}${saved ? " is-saved" : ""}`}
+            className={`round-control lightbox-download${downloading ? " is-saving" : ""}`}
             onClick={(event) => {
               event.stopPropagation();
               void handleDownload();
@@ -262,13 +218,9 @@ export default function PhotoLightbox({
             title={downloadLabel}
           >
             <svg className="lightbox-download-icon" viewBox="0 0 24 24" aria-hidden="true">
-              {saved ? <>
-                <path d="m5 12 4.2 4.2L19 6.8" />
-              </> : <>
-                <path d="M12 4v10" />
-                <path d="m8 10 4 4 4-4" />
-                <path d="M5 19h14" />
-              </>}
+              <path d="M12 4v10" />
+              <path d="m8 10 4 4 4-4" />
+              <path d="M5 19h14" />
             </svg>
             <span className="sr-only">{downloadLabel}</span>
           </button>
