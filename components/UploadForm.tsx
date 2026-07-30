@@ -102,6 +102,8 @@ async function reportUploadClientError({
       totalCount,
       online: typeof navigator === "undefined" ? true : navigator.onLine,
       userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+      pageOrigin: typeof window === "undefined" ? "" : window.location.origin,
+      pageHref: typeof window === "undefined" ? "" : window.location.href,
       files: files.map((file) => ({ name: file.name, type: file.type, size: file.size })),
     }),
   }).catch(() => null);

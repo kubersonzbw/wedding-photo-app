@@ -10,6 +10,8 @@ type UploadClientErrorPayload = {
   totalCount?: unknown;
   online?: unknown;
   userAgent?: unknown;
+  pageOrigin?: unknown;
+  pageHref?: unknown;
   files?: unknown;
 };
 
@@ -53,6 +55,8 @@ export async function POST(request: Request) {
       totalCount: numberValue(payload.totalCount),
       online: Boolean(payload.online),
       userAgent: text(payload.userAgent, 300),
+      pageOrigin: text(payload.pageOrigin, 180),
+      pageHref: text(payload.pageHref, 300),
       files: normalizeFiles(payload.files),
     });
 
