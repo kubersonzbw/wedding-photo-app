@@ -42,6 +42,11 @@ type UploadContext = {
 };
 
 class UserVisibleError extends Error {}
+class UploadStepError extends Error {
+  constructor(message: string, public stage: string) {
+    super(message);
+  }
+}
 const UPLOAD_BATCH_SIZE = 10;
 const UPLOAD_CONCURRENCY = 3;
 const MULTIPART_PART_CONCURRENCY = 3;
@@ -64,6 +69,42 @@ async function cleanupUpload(slug: string, accessCode: string, guestId: string, 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ slug, accessCode, guestId, storagePaths }),
   });
+}
+
+async function reportUploadClientError({
+  slug,
+  guestId,
+  stage,
+  error,
+  files,
+  uploadedCount,
+  totalCount,
+}: {
+  slug: string;
+  guestId: string | null;
+  stage: string;
+  error: unknown;
+  files: File[];
+  uploadedCount: number;
+  totalCount: number;
+}) {
+  const item = error instanceof Error ? error : null;
+  await fetch("/api/upload/client-error", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      slug,
+      guestId,
+      stage,
+      errorName: item?.name ?? typeof error,
+      message: item?.message ?? String(error ?? "Unknown upload error"),
+      uploadedCount,
+      totalCount,
+      online: typeof navigator === "undefined" ? true : navigator.onLine,
+      userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+      files: files.map((file) => ({ name: file.name, type: file.type, size: file.size })),
+    }),
+  }).catch(() => null);
 }
 
 async function abortMultipartUpload(context: UploadContext, upload: PendingMultipartUpload) {
@@ -238,7 +279,7 @@ async function uploadThumbnail(file: File, upload: UploadItem) {
       body: thumbnail,
     });
 
-    if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury.");
+    if (!thumbnailRes.ok) throw new UploadStepError(`Miniatura nie przeszła do Backblaze. Status: ${thumbnailRes.status}.`, "thumbnail-put");
   } catch (thumbnailError) {
     console.warn("Nie udało się przygotować miniatury.", thumbnailError);
   }
@@ -258,7 +299,7 @@ async function completeMultipartUpload(context: UploadContext, upload: UploadIte
     }),
   });
   const completeData = await readApiResponse<{ ok: boolean }>(completeRes);
-  if (!completeRes.ok) throw new Error(completeData.error ?? "Nie udało się zakończyć uploadu filmu.");
+  if (!completeRes.ok) throw new UploadStepError(completeData.error ?? "Nie udało się zakończyć uploadu filmu.", "multipart-complete");
 }
 
 async function uploadMultipartFile(file: File, upload: UploadItem, context: UploadContext) {
@@ -274,9 +315,9 @@ async function uploadMultipartFile(file: File, upload: UploadItem, context: Uplo
       body,
     });
 
-    if (!partRes.ok) throw new Error("Nie udało się przesłać części filmu.");
+    if (!partRes.ok) throw new UploadStepError(`Część filmu nie przeszła do Backblaze. Status: ${partRes.status}.`, "multipart-part-put");
     const etag = partRes.headers.get("ETag");
-    if (!etag) throw new Error("Nie udało się potwierdzić części filmu. Sprawdź CORS Backblaze dla nagłówka ETag.");
+    if (!etag) throw new UploadStepError("Nie udało się potwierdzić części filmu. Sprawdź CORS Backblaze dla nagłówka ETag.", "multipart-part-etag");
     uploadedParts.push({ partNumber: part.partNumber, etag });
   });
 
@@ -284,14 +325,19 @@ async function uploadMultipartFile(file: File, upload: UploadItem, context: Uplo
 }
 
 async function uploadSingleFile(file: File, upload: UploadItem) {
-  if (!upload.signedUrl) throw new Error("Brakuje podpisanego linku uploadu.");
-  const uploadRes: Response = await fetchWithRetry(upload.signedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type },
-    body: file,
-  });
+  if (!upload.signedUrl) throw new UploadStepError("Brakuje podpisanego linku uploadu.", "single-missing-signed-url");
+  let uploadRes: Response;
+  try {
+    uploadRes = await fetchWithRetry(upload.signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+  } catch (error) {
+    throw new UploadStepError(error instanceof Error ? error.message : "Nie udało się połączyć z Backblaze.", "single-put-network");
+  }
 
-  if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku do galerii.");
+  if (!uploadRes.ok) throw new UploadStepError(`Plik nie przeszedł do Backblaze. Status: ${uploadRes.status}.`, "single-put-status");
 }
 
 async function uploadSignedFile(file: File, upload: UploadItem, context: UploadContext) {
@@ -407,7 +453,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
           }),
         });
         const completeData = await readApiResponse<{ count: number }>(completeRes);
-        if (!completeRes.ok) throw new Error(completeData.error ?? "Pliki zostały przesłane, ale nie udało się zapisać ich w galerii.");
+        if (!completeRes.ok) throw new UploadStepError(completeData.error ?? "Pliki zostały przesłane, ale nie udało się zapisać ich w galerii.", "complete");
         completedCount += batch.length;
         setUploadedCount(completedCount);
         pendingStoragePaths = [];
@@ -422,6 +468,16 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       setRetryPending(false);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
+      const stage = e instanceof UploadStepError ? e.stage : "unknown";
+      await reportUploadClientError({
+        slug,
+        guestId,
+        stage,
+        error: e,
+        files: selectedFiles,
+        uploadedCount: completedCount,
+        totalCount,
+      });
       if (guestId) {
         const uploadContext = { slug, accessCode, guestId };
         await Promise.all(pendingMultipartUploads.map((upload) => abortMultipartUpload(uploadContext, upload).catch(() => null)));
