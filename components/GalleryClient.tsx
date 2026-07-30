@@ -238,6 +238,6 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
         {!loading && !error && hasRequested && photos.length === 0 && <EmptyGalleryState href={uploadHref} />}
       </div>
     </div>
-    {active && activeIndex !== null && <PhotoLightbox photo={active} previousPhoto={photos[(activeIndex - 1 + photos.length) % photos.length]} nextPhoto={photos[(activeIndex + 1) % photos.length]} current={activeIndex + 1} total={photos.length} slug={slug} guestCode={verifiedCode} onClose={() => setActiveIndex(null)} onPrevious={() => setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length)} onNext={() => setActiveIndex((c) => c === null ? c : (c + 1) % photos.length)} onMediaError={refreshMediaUrls} />}
+    {active && activeIndex !== null && <PhotoLightbox photos={photos} activeIndex={activeIndex} slug={slug} guestCode={verifiedCode} onClose={() => setActiveIndex(null)} onSelect={setActiveIndex} onMediaError={refreshMediaUrls} />}
   </WeddingShell>;
 }
