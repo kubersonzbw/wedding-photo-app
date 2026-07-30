@@ -1,4 +1,7 @@
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -6,6 +9,7 @@ import {
   PutObjectCommand,
   S3Client,
   S3ServiceException,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -50,6 +54,69 @@ export async function createSignedUploadUrl(path: string, contentType: string, e
     signedUrl: await getSignedUrl(client, command, { expiresIn }),
     path,
   };
+}
+
+export async function createMultipartUpload(path: string, contentType: string) {
+  const env = assertBackblazeEnv();
+  const client = createBackblazeClient();
+  const response = await client.send(new CreateMultipartUploadCommand({
+    Bucket: env.bucket,
+    Key: path,
+    ContentType: contentType,
+  }));
+
+  if (!response.UploadId) throw new Error("Nie udało się rozpocząć uploadu wieloczęściowego.");
+
+  return {
+    path,
+    uploadId: response.UploadId,
+  };
+}
+
+export async function createSignedMultipartPartUrls(path: string, uploadId: string, partCount: number, expiresIn = 3600) {
+  const env = assertBackblazeEnv();
+  const client = createBackblazeClient();
+
+  return Promise.all(Array.from({ length: partCount }, async (_, index) => {
+    const partNumber = index + 1;
+    const command = new UploadPartCommand({
+      Bucket: env.bucket,
+      Key: path,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+    });
+
+    return {
+      partNumber,
+      signedUrl: await getSignedUrl(client, command, { expiresIn }),
+    };
+  }));
+}
+
+export async function completeMultipartUpload(path: string, uploadId: string, parts: Array<{ partNumber: number; etag: string }>) {
+  const env = assertBackblazeEnv();
+  const client = createBackblazeClient();
+  await client.send(new CompleteMultipartUploadCommand({
+    Bucket: env.bucket,
+    Key: path,
+    UploadId: uploadId,
+    MultipartUpload: {
+      Parts: parts
+        .slice()
+        .sort((a, b) => a.partNumber - b.partNumber)
+        .map((part) => ({ PartNumber: part.partNumber, ETag: part.etag })),
+    },
+  }));
+}
+
+export async function abortMultipartUpload(path: string, uploadId: string) {
+  const env = assertBackblazeEnv();
+  const client = createBackblazeClient();
+  await client.send(new AbortMultipartUploadCommand({
+    Bucket: env.bucket,
+    Key: path,
+    UploadId: uploadId,
+  }));
 }
 
 export async function objectExists(path: string) {
@@ -109,4 +176,14 @@ export async function signedUrl(path: string, expiresIn = 300) {
   const env = assertBackblazeEnv();
   const client = createBackblazeClient();
   return getSignedUrl(client, new GetObjectCommand({ Bucket: env.bucket, Key: path }), { expiresIn });
+}
+
+export async function signedDownloadUrl(path: string, filename: string, expiresIn = 120) {
+  const env = assertBackblazeEnv();
+  const client = createBackblazeClient();
+  return getSignedUrl(client, new GetObjectCommand({
+    Bucket: env.bucket,
+    Key: path,
+    ResponseContentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+  }), { expiresIn });
 }

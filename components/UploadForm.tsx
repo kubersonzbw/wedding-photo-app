@@ -12,18 +12,40 @@ type UploadStartResponse = {
   uploads: Array<{
     photoId: string;
     storagePath: string;
-    signedUrl: string;
+    uploadMethod?: "single" | "multipart";
+    signedUrl?: string;
     originalFilename: string;
     mimeType: string;
     sizeBytes: number;
     thumbnailStoragePath?: string;
     signedThumbnailUrl?: string;
+    multipart?: {
+      uploadId: string;
+      partSize: number;
+      parts: Array<{
+        partNumber: number;
+        signedUrl: string;
+      }>;
+    };
   }>;
+};
+
+type UploadItem = UploadStartResponse["uploads"][number];
+type PendingMultipartUpload = {
+  storagePath: string;
+  uploadId: string;
+};
+type UploadContext = {
+  slug: string;
+  accessCode: string;
+  guestId: string;
 };
 
 class UserVisibleError extends Error {}
 const UPLOAD_BATCH_SIZE = 10;
 const UPLOAD_CONCURRENCY = 3;
+const MULTIPART_PART_CONCURRENCY = 3;
+const UPLOAD_RETRY_ATTEMPTS = 3;
 const THUMBNAIL_WIDTH = 640;
 const THUMBNAIL_QUALITY = 0.72;
 
@@ -44,6 +66,20 @@ async function cleanupUpload(slug: string, accessCode: string, guestId: string, 
   });
 }
 
+async function abortMultipartUpload(context: UploadContext, upload: PendingMultipartUpload) {
+  await fetch("/api/upload/multipart/abort", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      slug: context.slug,
+      accessCode: context.accessCode,
+      guestId: context.guestId,
+      storagePath: upload.storagePath,
+      uploadId: upload.uploadId,
+    }),
+  });
+}
+
 function chunkFiles(files: File[], size: number) {
   const chunks: File[][] = [];
   for (let index = 0; index < files.length; index += size) chunks.push(files.slice(index, index + size));
@@ -61,6 +97,42 @@ async function runWithConcurrency<T>(items: T[], limit: number, task: (item: T, 
   });
 
   await Promise.all(workers);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitForOnline() {
+  if (typeof navigator === "undefined" || navigator.onLine) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    window.addEventListener("online", () => resolve(), { once: true });
+  });
+}
+
+function isRetryableStatus(status: number) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attempts = UPLOAD_RETRY_ATTEMPTS) {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await waitForOnline();
+      const response = await fetch(input, init);
+      if (response.ok || !isRetryableStatus(response.status) || attempt === attempts) return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) throw error;
+    }
+
+    await waitForOnline();
+    await sleep(450 * attempt);
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Nie udało się połączyć z internetem.");
 }
 
 function isVideoFile(file: File) {
@@ -155,29 +227,78 @@ async function createImageThumbnail(file: File) {
   }
 }
 
-async function uploadSignedFile(file: File, upload: UploadStartResponse["uploads"][number]) {
-  const uploadRes: Response = await fetch(upload.signedUrl, {
+async function uploadThumbnail(file: File, upload: UploadItem) {
+  if ((!isImageFile(file) && !isVideoFile(file)) || !upload.signedThumbnailUrl) return;
+
+  try {
+    const thumbnail = isVideoFile(file) ? await createVideoThumbnail(file) : await createImageThumbnail(file);
+    const thumbnailRes: Response = await fetchWithRetry(upload.signedThumbnailUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "image/jpeg" },
+      body: thumbnail,
+    });
+
+    if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury.");
+  } catch (thumbnailError) {
+    console.warn("Nie udało się przygotować miniatury.", thumbnailError);
+  }
+}
+
+async function completeMultipartUpload(context: UploadContext, upload: UploadItem, parts: Array<{ partNumber: number; etag: string }>) {
+  const completeRes = await fetch("/api/upload/multipart/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      slug: context.slug,
+      accessCode: context.accessCode,
+      guestId: context.guestId,
+      storagePath: upload.storagePath,
+      uploadId: upload.multipart?.uploadId,
+      parts,
+    }),
+  });
+  const completeData = await readApiResponse<{ ok: boolean }>(completeRes);
+  if (!completeRes.ok) throw new Error(completeData.error ?? "Nie udało się zakończyć uploadu filmu.");
+}
+
+async function uploadMultipartFile(file: File, upload: UploadItem, context: UploadContext) {
+  if (!upload.multipart) throw new Error("Brakuje danych uploadu filmu.");
+
+  const uploadedParts: Array<{ partNumber: number; etag: string }> = [];
+  await runWithConcurrency(upload.multipart.parts, MULTIPART_PART_CONCURRENCY, async (part) => {
+    const start = (part.partNumber - 1) * upload.multipart!.partSize;
+    const end = Math.min(start + upload.multipart!.partSize, file.size);
+    const body = file.slice(start, end);
+    const partRes = await fetchWithRetry(part.signedUrl, {
+      method: "PUT",
+      body,
+    });
+
+    if (!partRes.ok) throw new Error("Nie udało się przesłać części filmu.");
+    const etag = partRes.headers.get("ETag");
+    if (!etag) throw new Error("Nie udało się potwierdzić części filmu. Sprawdź CORS Backblaze dla nagłówka ETag.");
+    uploadedParts.push({ partNumber: part.partNumber, etag });
+  });
+
+  await completeMultipartUpload(context, upload, uploadedParts);
+}
+
+async function uploadSingleFile(file: File, upload: UploadItem) {
+  if (!upload.signedUrl) throw new Error("Brakuje podpisanego linku uploadu.");
+  const uploadRes: Response = await fetchWithRetry(upload.signedUrl, {
     method: "PUT",
     headers: { "Content-Type": file.type },
     body: file,
   });
 
   if (!uploadRes.ok) throw new Error("Nie udało się przesłać pliku do galerii.");
+}
 
-  if ((isImageFile(file) || isVideoFile(file)) && upload.signedThumbnailUrl) {
-    try {
-      const thumbnail = isVideoFile(file) ? await createVideoThumbnail(file) : await createImageThumbnail(file);
-      const thumbnailRes: Response = await fetch(upload.signedThumbnailUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "image/jpeg" },
-        body: thumbnail,
-      });
+async function uploadSignedFile(file: File, upload: UploadItem, context: UploadContext) {
+  if (upload.uploadMethod === "multipart") await uploadMultipartFile(file, upload, context);
+  else await uploadSingleFile(file, upload);
 
-      if (!thumbnailRes.ok) throw new Error("Nie udało się przesłać miniatury.");
-    } catch (thumbnailError) {
-      console.warn("Nie udało się przygotować miniatury.", thumbnailError);
-    }
-  }
+  await uploadThumbnail(file, upload);
 }
 
 function isNetworkError(error: unknown) {
@@ -217,6 +338,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   async function submit() {
     let guestId: string | null = null;
     let pendingStoragePaths: string[] = [];
+    let pendingMultipartUploads: PendingMultipartUpload[] = [];
     let completedCount = 0;
     const totalCount = selectedFiles.length;
     const uploadSummary = {
@@ -255,8 +377,15 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         guestId = startData.guestId;
 
         pendingStoragePaths = startData.uploads.map((upload) => upload.storagePath);
+        pendingMultipartUploads = startData.uploads
+          .filter((upload) => upload.uploadMethod === "multipart" && upload.multipart)
+          .map((upload) => ({ storagePath: upload.storagePath, uploadId: upload.multipart!.uploadId }));
+        const uploadContext = { slug, accessCode, guestId: startData.guestId };
         await runWithConcurrency(startData.uploads, UPLOAD_CONCURRENCY, async (upload, index) => {
-          await uploadSignedFile(batch[index], upload);
+          await uploadSignedFile(batch[index], upload, uploadContext);
+          if (upload.uploadMethod === "multipart" && upload.multipart) {
+            pendingMultipartUploads = pendingMultipartUploads.filter((pending) => pending.uploadId !== upload.multipart!.uploadId);
+          }
           setUploadedCount((count) => count + 1);
         });
 
@@ -282,6 +411,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         completedCount += batch.length;
         setUploadedCount(completedCount);
         pendingStoragePaths = [];
+        pendingMultipartUploads = [];
       }
 
       setCodeConfirmed(true);
@@ -293,6 +423,8 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
       if (guestId) {
+        const uploadContext = { slug, accessCode, guestId };
+        await Promise.all(pendingMultipartUploads.map((upload) => abortMultipartUpload(uploadContext, upload).catch(() => null)));
         await cleanupUpload(slug, accessCode, guestId, pendingStoragePaths).catch(() => null);
       }
       setError(completedCount > 0 && completedCount < totalCount

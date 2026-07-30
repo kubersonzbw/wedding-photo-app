@@ -103,6 +103,11 @@ export async function approvedPhotos(eventId: string, limit?: number, offset = 0
   return supabaseFetch(`/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=*,guests(name)&order=created_at.desc,id.desc${pagination}`);
 }
 
+export async function approvedPhotoById(eventId: string, photoId: string) {
+  const rows = await supabaseFetch(`/rest/v1/photos?id=eq.${encodeURIComponent(photoId)}&event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=*&limit=1`);
+  return rows?.[0] ?? null;
+}
+
 export async function countApprovedPhotos(eventId: string) {
   const env = assertSupabaseAdminEnv();
   const res = await fetch(`${env.url}/rest/v1/photos?event_id=eq.${encodeURIComponent(eventId)}&status=eq.approved&select=id&limit=1`, {

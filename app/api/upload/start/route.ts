@@ -3,7 +3,7 @@ import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { ALLOWED_IMAGE_TYPES, isVideoType, validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
 import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
-import { createSignedUploadUrl } from "@/lib/storage/backblaze";
+import { abortMultipartUpload, createMultipartUpload, createSignedMultipartPartUrls, createSignedUploadUrl } from "@/lib/storage/backblaze";
 
 const EXTENSION_BY_TYPE: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -17,6 +17,16 @@ const EXTENSION_BY_TYPE: Record<string, string> = {
 type UploadStartFile = PhotoFileInfo;
 const UPLOAD_RATE_LIMIT_FILES = Number(process.env.UPLOAD_RATE_LIMIT_PHOTOS ?? 120);
 const UPLOAD_RATE_LIMIT_WINDOW_MS = Number(process.env.UPLOAD_RATE_LIMIT_WINDOW_MS ?? 600000);
+const MULTIPART_VIDEO_THRESHOLD_BYTES = Number(process.env.UPLOAD_MULTIPART_VIDEO_THRESHOLD_BYTES ?? 100 * 1024 * 1024);
+const MULTIPART_PART_SIZE_BYTES = Number(process.env.UPLOAD_MULTIPART_PART_SIZE_BYTES ?? 16 * 1024 * 1024);
+
+function multipartPartCount(size: number) {
+  return Math.ceil(size / MULTIPART_PART_SIZE_BYTES);
+}
+
+function shouldUseMultipartUpload(file: UploadStartFile) {
+  return isVideoType(file.type) && file.size >= MULTIPART_VIDEO_THRESHOLD_BYTES;
+}
 
 function normalizeFiles(value: unknown): UploadStartFile[] {
   if (!Array.isArray(value)) return [];
@@ -54,32 +64,61 @@ export async function POST(request: Request) {
     if (!guest) return Response.json({ error: "Nie udało się znaleźć gościa dla tego uploadu." }, { status: 400 });
     const createdGuest = !existingGuestId;
 
+    const createdMultipartUploads: Array<{ storagePath: string; uploadId: string }> = [];
+
     try {
-      const uploads = await Promise.all(files.map(async (file) => {
+      const uploads = [];
+
+      for (const file of files) {
         const photoId = crypto.randomUUID();
         const extension = EXTENSION_BY_TYPE[file.type] ?? "jpg";
         const storagePath = `${event.id}/${guest.id}/${photoId}.${extension}`;
-        const [signed, signedThumbnail] = await Promise.all([
-          createSignedUploadUrl(storagePath, file.type),
-          (isVideoType(file.type) || ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
-            ? createSignedUploadUrl(thumbnailPathForStoragePath(storagePath), "image/jpeg")
-            : Promise.resolve(null),
-        ]);
+        const signedThumbnail = (isVideoType(file.type) || ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
+          ? await createSignedUploadUrl(thumbnailPathForStoragePath(storagePath), "image/jpeg")
+          : null;
 
-        return {
+        if (shouldUseMultipartUpload(file)) {
+          const multipart = await createMultipartUpload(storagePath, file.type);
+          createdMultipartUploads.push({ storagePath, uploadId: multipart.uploadId });
+          const partCount = multipartPartCount(file.size);
+          const parts = await createSignedMultipartPartUrls(storagePath, multipart.uploadId, partCount);
+
+          uploads.push({
+            photoId,
+            storagePath,
+            uploadMethod: "multipart",
+            multipart: {
+              uploadId: multipart.uploadId,
+              partSize: MULTIPART_PART_SIZE_BYTES,
+              parts,
+            },
+            thumbnailStoragePath: signedThumbnail?.path,
+            signedThumbnailUrl: signedThumbnail?.signedUrl,
+            originalFilename: file.name,
+            mimeType: file.type,
+            sizeBytes: file.size,
+          });
+          continue;
+        }
+
+        const signed = await createSignedUploadUrl(storagePath, file.type);
+
+        uploads.push({
           photoId,
           storagePath,
+          uploadMethod: "single",
           signedUrl: signed.signedUrl,
           thumbnailStoragePath: signedThumbnail?.path,
           signedThumbnailUrl: signedThumbnail?.signedUrl,
           originalFilename: file.name,
           mimeType: file.type,
           sizeBytes: file.size,
-        };
-      }));
+        });
+      }
 
       return Response.json({ ok: true, guestId: guest.id, uploads });
     } catch (error) {
+      await Promise.all(createdMultipartUploads.map((upload) => abortMultipartUpload(upload.storagePath, upload.uploadId).catch(() => null)));
       if (createdGuest) await deleteGuest(guest.id).catch(() => null);
       throw error;
     }
