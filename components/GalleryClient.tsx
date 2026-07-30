@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { type TouchEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type TouchEvent as ReactTouchEvent, useCallback, useEffect, useRef, useState } from "react";
 import EmptyGalleryState from "@/components/EmptyGalleryState";
 import ErrorState from "@/components/ErrorState";
 import GalleryGrid from "@/components/GalleryGrid";
@@ -59,7 +59,9 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   const initialLoadStarted = useRef(false);
   const mediaRefreshInFlight = useRef(false);
   const newMemoryCheckInFlight = useRef(false);
+  const refreshSurfaceRef = useRef<HTMLDivElement | null>(null);
   const pullStartY = useRef<number | null>(null);
+  const pullDistanceRef = useRef(0);
   const uploadParams = new URLSearchParams({ returnTo: "gallery" });
   if (verifiedCode) uploadParams.set("code", verifiedCode);
   const uploadHref = `/wedding/${encodeURIComponent(slug)}?${uploadParams.toString()}`;
@@ -159,23 +161,29 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     if (value.trim() !== verifiedCode) setVerifiedCode("");
   }
 
-  function handlePullStart(event: TouchEvent<HTMLDivElement>) {
+  const setPullDistanceValue = useCallback((value: number) => {
+    pullDistanceRef.current = value;
+    setPullDistance(value);
+  }, []);
+
+  function handlePullStart(event: ReactTouchEvent<HTMLDivElement>) {
     if (!canPullRefresh || window.scrollY > 0) return;
     pullStartY.current = event.touches[0]?.clientY ?? null;
   }
 
-  function handlePullMove(event: TouchEvent<HTMLDivElement>) {
+  const handlePullMove = useCallback((event: TouchEvent) => {
     if (!canPullRefresh || pullStartY.current === null || window.scrollY > 0) return;
     const currentY = event.touches[0]?.clientY ?? pullStartY.current;
     const distance = currentY - pullStartY.current;
 
     if (distance <= 0) {
-      setPullDistance(0);
+      setPullDistanceValue(0);
       return;
     }
 
-    setPullDistance(Math.min(PULL_REFRESH_MAX, distance * 0.48));
-  }
+    if (event.cancelable) event.preventDefault();
+    setPullDistanceValue(Math.min(PULL_REFRESH_MAX, distance * 0.48));
+  }, [canPullRefresh, setPullDistanceValue]);
 
   function handlePullEnd() {
     if (!canPullRefresh || pullStartY.current === null) {
@@ -184,19 +192,19 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
       return;
     }
 
-    const shouldRefresh = pullDistance >= PULL_REFRESH_THRESHOLD;
+    const shouldRefresh = pullDistanceRef.current >= PULL_REFRESH_THRESHOLD;
     pullStartY.current = null;
 
     if (!shouldRefresh) {
-      setPullDistance(0);
+      setPullDistanceValue(0);
       return;
     }
 
     setPullRefreshing(true);
-    setPullDistance(64);
+    setPullDistanceValue(64);
     void load(slug, verifiedCode, false, true).finally(() => {
       setPullRefreshing(false);
-      setPullDistance(0);
+      setPullDistanceValue(0);
     });
   }
 
@@ -207,6 +215,12 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
 
   useEffect(() => { if (!initialCode || initialLoadStarted.current) return; initialLoadStarted.current = true; void load(initialSlug, initialCode); }, [initialSlug, initialCode, load]);
   useEffect(() => {
+    const surface = refreshSurfaceRef.current;
+    if (!surface) return;
+    surface.addEventListener("touchmove", handlePullMove, { passive: false });
+    return () => surface.removeEventListener("touchmove", handlePullMove);
+  }, [handlePullMove]);
+  useEffect(() => {
     if (!hasRequested || !verifiedCode) return;
     const timer = window.setInterval(() => { void checkForNewMemories(); }, NEW_MEMORY_CHECK_INTERVAL);
     return () => window.clearInterval(timer);
@@ -214,7 +228,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   useEffect(() => { if (activeIndex === null) return; function onKeyDown(event: KeyboardEvent) { if (event.key === "Escape") setActiveIndex(null); if (event.key === "ArrowRight") setActiveIndex((c) => c === null ? c : (c + 1) % photos.length); if (event.key === "ArrowLeft") setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [activeIndex, photos.length]);
 
   return <WeddingShell wide screen>
-    <div className="gallery-refresh-surface" onTouchStart={handlePullStart} onTouchMove={handlePullMove} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
+    <div className="gallery-refresh-surface" ref={refreshSurfaceRef} onTouchStart={handlePullStart} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
       <div className={`pull-refresh-indicator${pullDistance > 0 || pullRefreshing ? " is-visible" : ""}${pullRefreshing ? " is-refreshing" : ""}${pullDistance >= PULL_REFRESH_THRESHOLD ? " is-ready" : ""}`} aria-hidden="true">
         <span className="pull-refresh-spinner" />
         <span>{pullRefreshing ? "Sprawdzamy wspomnienia…" : pullDistance >= PULL_REFRESH_THRESHOLD ? "Puść, aby sprawdzić" : "Przeciągnij, aby sprawdzić"}</span>
