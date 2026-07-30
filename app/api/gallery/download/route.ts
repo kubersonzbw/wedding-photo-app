@@ -28,8 +28,14 @@ export async function POST(request: Request) {
     const storagePath = String(photo?.storage_path ?? "").trim();
     if (!photo || !storagePath) return Response.json({ error: "Nie znaleziono pliku." }, { status: 404 });
 
-    const url = await signedDownloadUrl(storagePath, filenameForPhoto(photo), DOWNLOAD_SIGNED_URL_EXPIRES_IN);
-    return Response.json({ url });
+    const filename = filenameForPhoto(photo);
+    const url = await signedDownloadUrl(storagePath, filename, DOWNLOAD_SIGNED_URL_EXPIRES_IN);
+    return Response.json({
+      url,
+      filename,
+      mimeType: String(photo.mime_type ?? ""),
+      sizeBytes: Number(photo.size_bytes ?? 0),
+    });
   } catch {
     return Response.json({ error: "Nie udało się przygotować pobierania." }, { status: 500 });
   }

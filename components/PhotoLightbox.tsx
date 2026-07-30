@@ -12,6 +12,15 @@ type Photo = {
   createdAt: string;
 };
 
+type DownloadPayload = {
+  url: string;
+  filename?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+};
+
+const WEB_SHARE_MAX_BYTES = 75 * 1024 * 1024;
+
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", {
   day: "2-digit",
   month: "short",
@@ -31,6 +40,42 @@ function photoDetails(photo: Photo) {
 
 function mediaPreviewSrc(photo: Photo) {
   return photo.mediaType === "video" ? photo.thumbnailUrl ?? photo.url : photo.url;
+}
+
+function canTryNativeFileShare(payload: DownloadPayload) {
+  const share = navigator.share;
+  const canShare = navigator.canShare;
+  if (typeof share !== "function" || typeof canShare !== "function") return false;
+  if (!window.isSecureContext) return false;
+  if (payload.sizeBytes && payload.sizeBytes > WEB_SHARE_MAX_BYTES) return false;
+  return true;
+}
+
+function startBrowserDownload(url: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function tryNativeFileShare(payload: DownloadPayload) {
+  if (!canTryNativeFileShare(payload)) return false;
+
+  const response = await fetch(payload.url);
+  if (!response.ok) throw new Error("Nie udało się pobrać pliku do zapisu.");
+
+  const blob = await response.blob();
+  const file = new File([blob], payload.filename || "wspomnienie", {
+    type: payload.mimeType || blob.type || "application/octet-stream",
+  });
+
+  if (!navigator.canShare?.({ files: [file] })) return false;
+  await navigator.share({ files: [file] });
+  return true;
 }
 
 function MediaSlide({
@@ -110,6 +155,7 @@ export default function PhotoLightbox({
   onMediaError?: () => void;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const [downloadLabel, setDownloadLabel] = useState("Pobierz");
   const [controlsHidden, setControlsHidden] = useState(false);
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
@@ -128,6 +174,7 @@ export default function PhotoLightbox({
     const nextIndex = emblaApi.selectedScrollSnap();
     onSelect(nextIndex);
     setControlsHidden(false);
+    setDownloadLabel("Pobierz");
   }, [emblaApi, onSelect]);
 
   useEffect(() => {
@@ -149,6 +196,7 @@ export default function PhotoLightbox({
   async function handleDownload() {
     if (downloading || !photo) return;
     setDownloading(true);
+    setDownloadLabel("Zapisujemy...");
     try {
       const res = await fetch("/api/gallery/download", {
         method: "POST",
@@ -157,8 +205,24 @@ export default function PhotoLightbox({
       });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error ?? "Nie udało się przygotować pobierania.");
-      window.location.href = data.url;
+      const payload: DownloadPayload = data;
+      try {
+        const shared = await tryNativeFileShare(payload);
+        if (shared) {
+          setDownloadLabel("Sprawdź galerię");
+          return;
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setDownloadLabel("Pobierz");
+          return;
+        }
+      }
+
+      startBrowserDownload(payload.url);
+      setDownloadLabel("Sprawdź galerię");
     } catch {
+      setDownloadLabel("Pobierz");
       window.alert("Nie udało się przygotować pobierania. Spróbuj ponownie za chwilę.");
     } finally {
       setDownloading(false);
@@ -167,24 +231,49 @@ export default function PhotoLightbox({
 
   function scrollPrevious() {
     setControlsHidden(false);
+    setDownloadLabel("Pobierz");
     emblaApi?.scrollPrev();
   }
 
   function scrollNext() {
     setControlsHidden(false);
+    setDownloadLabel("Pobierz");
     emblaApi?.scrollNext();
   }
 
   if (!photo) return null;
+  const saved = downloadLabel === "Sprawdź galerię";
 
   return (
     <div className={`lightbox${controlsHidden ? " is-controls-hidden" : ""}`} role="dialog" aria-modal="true" aria-label="Podgląd pliku">
       <div className="lightbox-top" onClick={(event) => event.stopPropagation()}>
-        <span>Galeria wspomnień</span>
         <strong>
           {activeIndex + 1} / {total}
         </strong>
-        <button className="round-control" onClick={onClose} aria-label="Zamknij podgląd pliku">×</button>
+        <div className="lightbox-actions">
+          <button
+            className={`round-control lightbox-download${downloading ? " is-saving" : ""}${saved ? " is-saved" : ""}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleDownload();
+            }}
+            disabled={downloading}
+            aria-label={downloadLabel}
+            title={downloadLabel}
+          >
+            <svg className="lightbox-download-icon" viewBox="0 0 24 24" aria-hidden="true">
+              {saved ? <>
+                <path d="m5 12 4.2 4.2L19 6.8" />
+              </> : <>
+                <path d="M12 4v10" />
+                <path d="m8 10 4 4 4-4" />
+                <path d="M5 19h14" />
+              </>}
+            </svg>
+            <span className="sr-only">{downloadLabel}</span>
+          </button>
+          <button className="round-control" onClick={onClose} aria-label="Zamknij podgląd pliku">×</button>
+        </div>
       </div>
 
       {total > 1 && <button className="round-control lightbox-nav lightbox-prev" onClick={scrollPrevious} aria-label="Poprzedni plik">‹</button>}
@@ -203,22 +292,6 @@ export default function PhotoLightbox({
           ))}
         </div>
       </div>
-
-      <button
-        className="lightbox-download"
-        onClick={(event) => {
-          event.stopPropagation();
-          void handleDownload();
-        }}
-        disabled={downloading}
-      >
-        <svg className="lightbox-download-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 4v10" />
-          <path d="m8 10 4 4 4-4" />
-          <path d="M5 19h14" />
-        </svg>
-        <span>{downloading ? "Pobieramy..." : "Pobierz"}</span>
-      </button>
 
       <span className="lightbox-author" onClick={(event) => event.stopPropagation()}>{photoDetails(photo)}</span>
 

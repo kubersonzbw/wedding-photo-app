@@ -357,7 +357,13 @@ async function uploadSingleFile(file: File, upload: UploadItem, context: UploadC
     throw new UploadStepError(error instanceof Error ? error.message : "Nie udało się połączyć z Backblaze.", "single-put-network");
   }
 
-  if (!uploadRes.ok) throw new UploadStepError(`Plik nie przeszedł do Backblaze. Status: ${uploadRes.status}.`, "single-put-status");
+  if (!uploadRes.ok) {
+    if (isImageFile(file) && file.size <= PROXY_IMAGE_FALLBACK_MAX_BYTES && isRetryableStatus(uploadRes.status)) {
+      await uploadSingleFileViaProxy(file, upload, context);
+      return;
+    }
+    throw new UploadStepError(`Plik nie przeszedł do Backblaze. Status: ${uploadRes.status}.`, "single-put-status");
+  }
 }
 
 async function uploadSignedFile(file: File, upload: UploadItem, context: UploadContext) {

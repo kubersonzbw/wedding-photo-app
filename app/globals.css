@@ -14,6 +14,14 @@
 @keyframes shimmer{to{background-position:-200% 0}}@media(min-width:720px){.wedding-shell{padding-top:24px}.lightbox{padding-inline:80px}.lightbox-prev{left:26px}.lightbox-next{right:26px}}
 .lightbox .lightbox-download,.lightbox .lightbox-download:hover,.lightbox .lightbox-download:focus-visible,.lightbox .lightbox-download:disabled{transform:none}
 .lightbox.is-controls-hidden .lightbox-download,.lightbox.is-controls-hidden .lightbox-download:disabled{transform:translateY(10px)}
+.lightbox .lightbox-top{grid-template-columns:1fr auto;gap:10px}
+.lightbox-actions{display:flex;align-items:center;justify-self:end;gap:8px}
+.lightbox .lightbox-top .lightbox-download{position:static;left:auto;bottom:auto;width:42px;min-height:42px;padding:0;border:0;border-radius:999px;background:rgba(255,255,255,.08);box-shadow:none;color:white;backdrop-filter:none;font-size:1rem}
+.lightbox .lightbox-top .lightbox-download:hover{background:rgba(255,255,255,.14)}
+.lightbox .lightbox-top .lightbox-download:disabled{opacity:.76}
+.lightbox .lightbox-top .lightbox-download.is-saving .lightbox-download-icon{animation:lightboxDownloadSpin .72s linear infinite}
+.lightbox .lightbox-top .lightbox-download.is-saved{background:rgba(255,255,255,.14)}
+@keyframes lightboxDownloadSpin{to{transform:rotate(360deg)}}
 .lightbox-stage{cursor:grab}
 .lightbox-stage:active{cursor:grabbing}
 .lightbox-track{display:flex;height:100%;touch-action:pan-y}
