@@ -51,6 +51,7 @@ const UPLOAD_BATCH_SIZE = 10;
 const UPLOAD_CONCURRENCY = 3;
 const MULTIPART_PART_CONCURRENCY = 3;
 const UPLOAD_RETRY_ATTEMPTS = 3;
+const PROXY_IMAGE_FALLBACK_MAX_BYTES = 4 * 1024 * 1024;
 const THUMBNAIL_WIDTH = 640;
 const THUMBNAIL_QUALITY = 0.72;
 
@@ -326,7 +327,20 @@ async function uploadMultipartFile(file: File, upload: UploadItem, context: Uplo
   await completeMultipartUpload(context, upload, uploadedParts);
 }
 
-async function uploadSingleFile(file: File, upload: UploadItem) {
+async function uploadSingleFileViaProxy(file: File, upload: UploadItem, context: UploadContext) {
+  const formData = new FormData();
+  formData.set("slug", context.slug);
+  formData.set("accessCode", context.accessCode);
+  formData.set("guestId", context.guestId);
+  formData.set("storagePath", upload.storagePath);
+  formData.set("file", file, file.name);
+
+  const proxyRes = await fetchWithRetry("/api/upload/proxy", { method: "POST", body: formData });
+  const proxyData = await readApiResponse<{ ok: boolean }>(proxyRes);
+  if (!proxyRes.ok) throw new UploadStepError(proxyData.error ?? "Nie udało się awaryjnie przesłać zdjęcia.", "single-proxy");
+}
+
+async function uploadSingleFile(file: File, upload: UploadItem, context: UploadContext) {
   if (!upload.signedUrl) throw new UploadStepError("Brakuje podpisanego linku uploadu.", "single-missing-signed-url");
   let uploadRes: Response;
   try {
@@ -336,6 +350,10 @@ async function uploadSingleFile(file: File, upload: UploadItem) {
       body: file,
     });
   } catch (error) {
+    if (isImageFile(file) && file.size <= PROXY_IMAGE_FALLBACK_MAX_BYTES) {
+      await uploadSingleFileViaProxy(file, upload, context);
+      return;
+    }
     throw new UploadStepError(error instanceof Error ? error.message : "Nie udało się połączyć z Backblaze.", "single-put-network");
   }
 
@@ -344,7 +362,7 @@ async function uploadSingleFile(file: File, upload: UploadItem) {
 
 async function uploadSignedFile(file: File, upload: UploadItem, context: UploadContext) {
   if (upload.uploadMethod === "multipart") await uploadMultipartFile(file, upload, context);
-  else await uploadSingleFile(file, upload);
+  else await uploadSingleFile(file, upload, context);
 
   await uploadThumbnail(file, upload);
 }
