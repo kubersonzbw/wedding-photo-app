@@ -179,6 +179,14 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attem
   throw lastError instanceof Error ? lastError : new Error("Nie udało się połączyć z internetem.");
 }
 
+async function fetchUploadApiWithRetry(input: RequestInfo | URL, init: RequestInit, networkStage: string) {
+  try {
+    return await fetchWithRetry(input, init);
+  } catch (error) {
+    throw new UploadStepError(error instanceof Error ? error.message : "Nie udało się połączyć z serwerem.", networkStage);
+  }
+}
+
 function isVideoFile(file: File) {
   return file.type.startsWith("video/");
 }
@@ -289,7 +297,7 @@ async function uploadThumbnail(file: File, upload: UploadItem) {
 }
 
 async function completeMultipartUpload(context: UploadContext, upload: UploadItem, parts: Array<{ partNumber: number; etag: string }>) {
-  const completeRes = await fetch("/api/upload/multipart/complete", {
+  const completeRes = await fetchUploadApiWithRetry("/api/upload/multipart/complete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -300,7 +308,7 @@ async function completeMultipartUpload(context: UploadContext, upload: UploadIte
       uploadId: upload.multipart?.uploadId,
       parts,
     }),
-  });
+  }, "multipart-complete-network");
   const completeData = await readApiResponse<{ ok: boolean }>(completeRes);
   if (!completeRes.ok) throw new UploadStepError(completeData.error ?? "Nie udało się zakończyć uploadu filmu.", "multipart-complete");
 }
@@ -430,7 +438,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         const batch = batches[batchIndex];
         const isLastBatch = batchIndex === batches.length - 1;
         pendingStoragePaths = [];
-        const startRes: Response = await fetch("/api/upload/start", {
+        const startRes = await fetchUploadApiWithRetry("/api/upload/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -440,11 +448,11 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
             guestId,
             files: batch.map((file) => ({ name: file.name, type: file.type, size: file.size })),
           }),
-        });
+        }, "start-network");
         const startData = await readApiResponse<UploadStartResponse>(startRes);
         if (!startRes.ok) {
           if ([400, 401, 429].includes(startRes.status) && startData.error) throw new UserVisibleError(startData.error);
-          throw new Error(startData.error ?? "Nie udało się przygotować uploadu.");
+          throw new UploadStepError(startData.error ?? "Nie udało się przygotować uploadu.", "start");
         }
         guestId = startData.guestId;
 
@@ -461,7 +469,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
           setUploadedCount((count) => count + 1);
         });
 
-        const completeRes: Response = await fetch("/api/upload/complete", {
+        const completeRes = await fetchUploadApiWithRetry("/api/upload/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -477,7 +485,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
             })),
             notification: isLastBatch ? uploadSummary : undefined,
           }),
-        });
+        }, "complete-network");
         const completeData = await readApiResponse<{ count: number }>(completeRes);
         if (!completeRes.ok) throw new UploadStepError(completeData.error ?? "Pliki zostały przesłane, ale nie udało się zapisać ich w galerii.", "complete");
         completedCount += batch.length;
