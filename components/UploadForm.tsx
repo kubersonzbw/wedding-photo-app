@@ -429,10 +429,48 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const fileRef = useRef<HTMLInputElement>(null);
   const hiddenAtRef = useRef<number | null>(null);
   const needsResumeWarmupRef = useRef(false);
+  const frozenRef = useRef(false);
+  const formStateRef = useRef({
+    accessCode,
+    consent,
+    guestName,
+    loading,
+    retryPending,
+    selectedFilesCount: selectedFiles.length,
+    success,
+  });
   const galleryUrl = galleryHref(slug, accessCode.trim() || undefined);
   const submitLabel = loading ? "Dodajemy wspomnienia…" : retryPending && selectedFiles.length > 0 ? "Ponów wysyłanie" : "Dodaj wspomnienia";
 
   useEffect(() => {
+    formStateRef.current = {
+      accessCode,
+      consent,
+      guestName,
+      loading,
+      retryPending,
+      selectedFilesCount: selectedFiles.length,
+      success,
+    };
+  }, [accessCode, consent, guestName, loading, retryPending, selectedFiles.length, success]);
+
+  useEffect(() => {
+    function canReloadCleanForm() {
+      const state = formStateRef.current;
+      return !state.loading
+        && !state.success
+        && !state.retryPending
+        && state.selectedFilesCount === 0
+        && !state.guestName.trim()
+        && !state.consent
+        && state.accessCode === initialCode;
+    }
+
+    function maybeReloadCleanStalePage() {
+      if (!needsResumeWarmupRef.current || !canReloadCleanForm()) return;
+      window.location.reload();
+    }
+
     function markNeedsWarmupIfStale() {
       if (hiddenAtRef.current && Date.now() - hiddenAtRef.current >= RESUME_WARMUP_AFTER_MS) {
         needsResumeWarmupRef.current = true;
@@ -446,24 +484,43 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       }
 
       markNeedsWarmupIfStale();
+      maybeReloadCleanStalePage();
     }
 
     function handlePageShow(event: PageTransitionEvent) {
       const wasDiscarded = "wasDiscarded" in document && Boolean((document as Document & { wasDiscarded?: boolean }).wasDiscarded);
       if (event.persisted || wasDiscarded) needsResumeWarmupRef.current = true;
       markNeedsWarmupIfStale();
+      maybeReloadCleanStalePage();
+    }
+
+    function handleFreeze() {
+      frozenRef.current = true;
+      hiddenAtRef.current ??= Date.now();
+      needsResumeWarmupRef.current = true;
+    }
+
+    function handleResume() {
+      if (frozenRef.current) needsResumeWarmupRef.current = true;
+      frozenRef.current = false;
+      markNeedsWarmupIfStale();
+      maybeReloadCleanStalePage();
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", markNeedsWarmupIfStale);
+    document.addEventListener("freeze", handleFreeze);
+    document.addEventListener("resume", handleResume);
+    window.addEventListener("focus", handleResume);
     window.addEventListener("pageshow", handlePageShow);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", markNeedsWarmupIfStale);
+      document.removeEventListener("freeze", handleFreeze);
+      document.removeEventListener("resume", handleResume);
+      window.removeEventListener("focus", handleResume);
       window.removeEventListener("pageshow", handlePageShow);
     };
-  }, []);
+  }, [initialCode]);
 
   function handleFilesChange(files: File[]) {
     setSelectedFiles(files);

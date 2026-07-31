@@ -8,7 +8,19 @@ function photoCountLabel(count: number) {
   return `${count} plików`;
 }
 
-export default function UploadDropzone({ fileRef, fileCount, uploading = false, progressLabel, onChange }: { fileRef: RefObject<HTMLInputElement | null>; fileCount: number; uploading?: boolean; progressLabel?: string; onChange: (files: File[]) => void }) {
+export default function UploadDropzone({
+  fileRef,
+  fileCount,
+  uploading = false,
+  progressLabel,
+  onChange,
+}: {
+  fileRef: RefObject<HTMLInputElement | null>;
+  fileCount: number;
+  uploading?: boolean;
+  progressLabel?: string;
+  onChange: (files: File[]) => void;
+}) {
   const hasFiles = fileCount > 0;
 
   return <div>
