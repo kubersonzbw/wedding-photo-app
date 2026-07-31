@@ -356,7 +356,16 @@ async function uploadSingleFileViaProxy(file: File, upload: UploadItem, context:
   formData.set("storagePath", upload.storagePath);
   formData.set("file", file, file.name);
 
-  const proxyRes = await fetchWithRetry("/api/upload/proxy", { method: "POST", body: formData });
+  let proxyRes: Response;
+  try {
+    proxyRes = await fetchWithRetry("/api/upload/proxy", {
+      method: "POST",
+      body: formData,
+      cache: "no-store",
+    }, UPLOAD_API_RETRY_ATTEMPTS, UPLOAD_API_RETRY_BASE_DELAY_MS);
+  } catch (error) {
+    throw new UploadStepError(error instanceof Error ? error.message : "Nie udało się awaryjnie połączyć z serwerem.", "single-proxy-network");
+  }
   const proxyData = await readApiResponse<{ ok: boolean }>(proxyRes);
   if (!proxyRes.ok) throw new UploadStepError(proxyData.error ?? "Nie udało się awaryjnie przesłać zdjęcia.", "single-proxy");
 }
