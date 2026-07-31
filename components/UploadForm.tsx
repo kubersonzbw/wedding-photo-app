@@ -40,6 +40,14 @@ type UploadContext = {
   accessCode: string;
   guestId: string;
 };
+type StartUploadBatchParams = {
+  slug: string;
+  accessCode: string;
+  guestName: string;
+  guestId: string | null;
+  files: File[];
+  networkStage: string;
+};
 
 class UserVisibleError extends Error {}
 class UploadStepError extends Error {
@@ -198,6 +206,26 @@ async function warmUploadApi(slug: string, accessCode: string) {
   }, "resume-warmup-network");
   const data = await readApiResponse<{ ok: boolean }>(res);
   if (!res.ok) throw new UserVisibleError(data.error ?? "Nie udało się odświeżyć dostępu do wydarzenia.");
+}
+
+async function startUploadBatch({ slug, accessCode, guestName, guestId, files, networkStage }: StartUploadBatchParams) {
+  const startRes = await fetchUploadApiWithRetry("/api/upload/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      slug,
+      accessCode,
+      guestName,
+      guestId,
+      files: files.map((file) => ({ name: file.name, type: file.type, size: file.size })),
+    }),
+  }, networkStage);
+  const startData = await readApiResponse<UploadStartResponse>(startRes);
+  if (!startRes.ok) {
+    if ([400, 401, 429].includes(startRes.status) && startData.error) throw new UserVisibleError(startData.error);
+    throw new UploadStepError(startData.error ?? "Nie udało się przygotować uploadu.", "start");
+  }
+  return startData;
 }
 
 function isVideoFile(file: File) {
@@ -403,6 +431,12 @@ async function uploadSignedFile(file: File, upload: UploadItem, context: UploadC
   await uploadThumbnail(file, upload);
 }
 
+function shouldRetryWithFreshSignedUrl(error: unknown, upload: UploadItem) {
+  return upload.uploadMethod !== "multipart"
+    && error instanceof UploadStepError
+    && (error.stage === "single-put-network" || error.stage === "single-proxy-network");
+}
+
 function isNetworkError(error: unknown) {
   if (!(error instanceof Error)) return true;
   if (error instanceof TypeError) return true;
@@ -559,35 +593,53 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         const isLastBatch = batchIndex === batches.length - 1;
         pendingStoragePaths = [];
         currentStage = "start-network";
-        const startRes = await fetchUploadApiWithRetry("/api/upload/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slug,
-            accessCode,
-            guestName,
-            guestId,
-            files: batch.map((file) => ({ name: file.name, type: file.type, size: file.size })),
-          }),
-        }, "start-network");
-        const startData = await readApiResponse<UploadStartResponse>(startRes);
-        if (!startRes.ok) {
-          if ([400, 401, 429].includes(startRes.status) && startData.error) throw new UserVisibleError(startData.error);
-          throw new UploadStepError(startData.error ?? "Nie udało się przygotować uploadu.", "start");
-        }
+        const startData = await startUploadBatch({ slug, accessCode, guestName, guestId, files: batch, networkStage: "start-network" });
         guestId = startData.guestId;
 
         pendingStoragePaths = startData.uploads.map((upload) => upload.storagePath);
+        const completedUploads: UploadItem[] = new Array(batch.length);
         pendingMultipartUploads = startData.uploads
           .filter((upload) => upload.uploadMethod === "multipart" && upload.multipart)
           .map((upload) => ({ storagePath: upload.storagePath, uploadId: upload.multipart!.uploadId }));
         const uploadContext = { slug, accessCode, guestId: startData.guestId };
         await runWithConcurrency(startData.uploads, UPLOAD_CONCURRENCY, async (upload, index) => {
+          const file = batch[index];
+          let completedUpload = upload;
           currentStage = upload.uploadMethod === "multipart" ? "multipart-upload" : "single-upload";
-          await uploadSignedFile(batch[index], upload, uploadContext);
-          if (upload.uploadMethod === "multipart" && upload.multipart) {
-            pendingMultipartUploads = pendingMultipartUploads.filter((pending) => pending.uploadId !== upload.multipart!.uploadId);
+          try {
+            await uploadSignedFile(file, upload, uploadContext);
+          } catch (uploadError) {
+            if (!shouldRetryWithFreshSignedUrl(uploadError, upload)) throw uploadError;
+
+            currentStage = "fresh-retry-start-network";
+            const retryStartData = await startUploadBatch({
+              slug,
+              accessCode,
+              guestName,
+              guestId: uploadContext.guestId,
+              files: [file],
+              networkStage: "fresh-retry-start-network",
+            });
+            const retryUpload = retryStartData.uploads[0];
+            if (!retryUpload) throw uploadError;
+            pendingStoragePaths.push(retryUpload.storagePath);
+            completedUpload = retryUpload;
+            currentStage = retryUpload.uploadMethod === "multipart" ? "fresh-retry-multipart-upload" : "fresh-retry-single-upload";
+            try {
+              await uploadSignedFile(file, retryUpload, uploadContext);
+              pendingStoragePaths = pendingStoragePaths.filter((path) => path !== upload.storagePath);
+              await cleanupUpload(slug, accessCode, uploadContext.guestId, [upload.storagePath]).catch(() => null);
+            } catch (retryError) {
+              if (retryError instanceof UploadStepError) {
+                throw new UploadStepError(retryError.message, `fresh-retry-${retryError.stage}`);
+              }
+              throw retryError;
+            }
           }
+          if (completedUpload.uploadMethod === "multipart" && completedUpload.multipart) {
+            pendingMultipartUploads = pendingMultipartUploads.filter((pending) => pending.uploadId !== completedUpload.multipart!.uploadId);
+          }
+          completedUploads[index] = completedUpload;
           setUploadedCount((count) => count + 1);
         });
 
@@ -599,7 +651,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
             slug,
             accessCode,
             guestId: startData.guestId,
-            uploads: startData.uploads.map((upload) => ({
+            uploads: completedUploads.map((upload) => ({
               photoId: upload.photoId,
               storagePath: upload.storagePath,
               name: upload.originalFilename,
