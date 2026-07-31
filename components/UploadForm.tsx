@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { galleryHref } from "@/lib/events/config";
 import { validatePhotoList } from "@/lib/photos/validation";
 import BrokenHeartIcon from "@/components/BrokenHeartIcon";
@@ -51,6 +51,9 @@ const UPLOAD_BATCH_SIZE = 10;
 const UPLOAD_CONCURRENCY = 3;
 const MULTIPART_PART_CONCURRENCY = 3;
 const UPLOAD_RETRY_ATTEMPTS = 3;
+const UPLOAD_API_RETRY_ATTEMPTS = 5;
+const UPLOAD_API_RETRY_BASE_DELAY_MS = 800;
+const RESUME_WARMUP_AFTER_MS = 2 * 60 * 1000;
 const PROXY_IMAGE_FALLBACK_MAX_BYTES = 4 * 1024 * 1024;
 const THUMBNAIL_WIDTH = 640;
 const THUMBNAIL_QUALITY = 0.72;
@@ -159,7 +162,7 @@ function isRetryableStatus(status: number) {
   return status === 408 || status === 429 || status >= 500;
 }
 
-async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attempts = UPLOAD_RETRY_ATTEMPTS) {
+async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attempts = UPLOAD_RETRY_ATTEMPTS, baseDelayMs = 450) {
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -173,7 +176,7 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attem
     }
 
     await waitForOnline();
-    await sleep(450 * attempt);
+    await sleep(baseDelayMs * attempt);
   }
 
   throw lastError instanceof Error ? lastError : new Error("Nie udało się połączyć z internetem.");
@@ -181,10 +184,20 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attem
 
 async function fetchUploadApiWithRetry(input: RequestInfo | URL, init: RequestInit, networkStage: string) {
   try {
-    return await fetchWithRetry(input, init);
+    return await fetchWithRetry(input, { cache: "no-store", ...init }, UPLOAD_API_RETRY_ATTEMPTS, UPLOAD_API_RETRY_BASE_DELAY_MS);
   } catch (error) {
     throw new UploadStepError(error instanceof Error ? error.message : "Nie udało się połączyć z serwerem.", networkStage);
   }
+}
+
+async function warmUploadApi(slug: string, accessCode: string) {
+  const res = await fetchUploadApiWithRetry("/api/validate-event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug, accessCode }),
+  }, "resume-warmup-network");
+  const data = await readApiResponse<{ ok: boolean }>(res);
+  if (!res.ok) throw new UserVisibleError(data.error ?? "Nie udało się odświeżyć dostępu do wydarzenia.");
 }
 
 function isVideoFile(file: File) {
@@ -405,8 +418,43 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [retryPending, setRetryPending] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const hiddenAtRef = useRef<number | null>(null);
+  const needsResumeWarmupRef = useRef(false);
   const galleryUrl = galleryHref(slug, accessCode.trim() || undefined);
   const submitLabel = loading ? "Dodajemy wspomnienia…" : retryPending && selectedFiles.length > 0 ? "Ponów wysyłanie" : "Dodaj wspomnienia";
+
+  useEffect(() => {
+    function markNeedsWarmupIfStale() {
+      if (hiddenAtRef.current && Date.now() - hiddenAtRef.current >= RESUME_WARMUP_AFTER_MS) {
+        needsResumeWarmupRef.current = true;
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+
+      markNeedsWarmupIfStale();
+    }
+
+    function handlePageShow(event: PageTransitionEvent) {
+      const wasDiscarded = "wasDiscarded" in document && Boolean((document as Document & { wasDiscarded?: boolean }).wasDiscarded);
+      if (event.persisted || wasDiscarded) needsResumeWarmupRef.current = true;
+      markNeedsWarmupIfStale();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", markNeedsWarmupIfStale);
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", markNeedsWarmupIfStale);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, []);
 
   function handleFilesChange(files: File[]) {
     setSelectedFiles(files);
@@ -420,6 +468,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
     let pendingStoragePaths: string[] = [];
     let pendingMultipartUploads: PendingMultipartUpload[] = [];
     let completedCount = 0;
+    let currentStage = "idle";
     const totalCount = selectedFiles.length;
     const uploadSummary = {
       totalCount,
@@ -433,11 +482,17 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       if (!consent) throw new UserVisibleError("Zaznacz zgodę, aby dodać pliki do wspólnej galerii.");
       const validation = validatePhotoList(selectedFiles);
       if (validation) throw new UserVisibleError(validation);
+      if (needsResumeWarmupRef.current) {
+        currentStage = "resume-warmup-network";
+        await warmUploadApi(slug, accessCode);
+        needsResumeWarmupRef.current = false;
+      }
       const batches = chunkFiles(selectedFiles, UPLOAD_BATCH_SIZE);
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
         const batch = batches[batchIndex];
         const isLastBatch = batchIndex === batches.length - 1;
         pendingStoragePaths = [];
+        currentStage = "start-network";
         const startRes = await fetchUploadApiWithRetry("/api/upload/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -462,6 +517,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
           .map((upload) => ({ storagePath: upload.storagePath, uploadId: upload.multipart!.uploadId }));
         const uploadContext = { slug, accessCode, guestId: startData.guestId };
         await runWithConcurrency(startData.uploads, UPLOAD_CONCURRENCY, async (upload, index) => {
+          currentStage = upload.uploadMethod === "multipart" ? "multipart-upload" : "single-upload";
           await uploadSignedFile(batch[index], upload, uploadContext);
           if (upload.uploadMethod === "multipart" && upload.multipart) {
             pendingMultipartUploads = pendingMultipartUploads.filter((pending) => pending.uploadId !== upload.multipart!.uploadId);
@@ -469,6 +525,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
           setUploadedCount((count) => count + 1);
         });
 
+        currentStage = "complete-network";
         const completeRes = await fetchUploadApiWithRetry("/api/upload/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -502,7 +559,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
       setRetryPending(false);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
-      const stage = e instanceof UploadStepError ? e.stage : "unknown";
+      const stage = e instanceof UploadStepError ? e.stage : currentStage;
       await reportUploadClientError({
         slug,
         guestId,
