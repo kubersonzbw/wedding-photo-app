@@ -1,7 +1,7 @@
 import { getEventBySlug, getGuestById, insertPhotos } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
-import { createAndStoreImageThumbnail, isThumbnailSupported, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
+import { createAndStoreImageDerivatives, isThumbnailSupported, previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { objectExists } from "@/lib/storage/backblaze";
 import { sendUploadNotificationEmail } from "@/lib/notifications/upload-email";
 
@@ -98,8 +98,20 @@ export async function POST(request: Request) {
         throw new UploadCompleteError("Nie udało się potwierdzić przesłanego zdjęcia.");
       }
 
-      if (isThumbnailSupported(upload.type) && !(await objectExists(thumbnailPathForStoragePath(upload.storagePath)).catch(() => false))) {
-        await createAndStoreImageThumbnail(upload.storagePath, upload.type);
+      if (isThumbnailSupported(upload.type)) {
+        const thumbnailPath = thumbnailPathForStoragePath(upload.storagePath);
+        const previewPath = previewPathForStoragePath(upload.storagePath);
+        const [hasThumbnail, hasPreview] = await Promise.all([
+          objectExists(thumbnailPath).catch(() => false),
+          objectExists(previewPath).catch(() => false),
+        ]);
+
+        if (!hasThumbnail || !hasPreview) {
+          await createAndStoreImageDerivatives(upload.storagePath, upload.type, {
+            thumbnail: !hasThumbnail,
+            preview: !hasPreview,
+          });
+        }
       }
     });
 

@@ -1,6 +1,6 @@
 import { countPhotos, deletePhoto, listPhotos, updatePhotoStatus } from "@/lib/supabase/admin";
 import { requireAdminUser } from "@/lib/supabase/server";
-import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
+import { previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { removeObjects, signedUrl } from "@/lib/storage/backblaze";
 
 const PHOTO_STATUSES = ["approved", "hidden"] as const;
@@ -62,7 +62,7 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Nieprawidłowa akcja." }, { status: 400 });
     }
     if (nextStatus === "deleted") {
-      if (storagePath) await removeObjects([String(storagePath), thumbnailPathForStoragePath(String(storagePath))]);
+      if (storagePath) await removeObjects([String(storagePath), thumbnailPathForStoragePath(String(storagePath)), previewPathForStoragePath(String(storagePath))]);
       await deletePhoto(String(id));
       return Response.json({ ok: true });
     }

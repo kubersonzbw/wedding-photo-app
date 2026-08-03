@@ -9,9 +9,10 @@ import PhotoLightbox from "@/components/PhotoLightbox";
 import WeddingShell from "@/components/WeddingShell";
 
 const PAGE_SIZE = 30;
+const LIGHTBOX_PREFETCH_REMAINING = 10;
 const PULL_REFRESH_THRESHOLD = 68;
 const PULL_REFRESH_MAX = 88;
-type Photo = { id: string; url: string; thumbnailUrl?: string; guestName?: string; createdAt: string };
+type Photo = { id: string; url: string; thumbnailUrl?: string; previewUrl?: string; guestName?: string; createdAt: string };
 type GalleryPhoto = Photo & { mediaType?: "image" | "video"; mimeType?: string };
 type GalleryLoadResult = { ok: boolean; totalCount: number };
 const NEW_MEMORY_CHECK_INTERVAL = 45000;
@@ -213,6 +214,12 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     void load(slug, verifiedCode, false, true).finally(() => setNoticeRefreshing(false));
   }
 
+  useEffect(() => {
+    if (activeIndex === null || !verifiedCode || !hasMore || loadingMore) return;
+    if (photos.length - activeIndex > LIGHTBOX_PREFETCH_REMAINING) return;
+    const timer = window.setTimeout(() => { void load(slug, verifiedCode, true, true); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeIndex, hasMore, load, loadingMore, photos.length, slug, verifiedCode]);
   useEffect(() => { if (!initialCode || initialLoadStarted.current) return; initialLoadStarted.current = true; void load(initialSlug, initialCode); }, [initialSlug, initialCode, load]);
   useEffect(() => {
     const surface = refreshSurfaceRef.current;
@@ -225,7 +232,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     const timer = window.setInterval(() => { void checkForNewMemories(); }, NEW_MEMORY_CHECK_INTERVAL);
     return () => window.clearInterval(timer);
   }, [checkForNewMemories, hasRequested, verifiedCode]);
-  useEffect(() => { if (activeIndex === null) return; function onKeyDown(event: KeyboardEvent) { if (event.key === "Escape") setActiveIndex(null); if (event.key === "ArrowRight") setActiveIndex((c) => c === null ? c : (c + 1) % photos.length); if (event.key === "ArrowLeft") setActiveIndex((c) => c === null ? c : (c - 1 + photos.length) % photos.length); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [activeIndex, photos.length]);
+  useEffect(() => { if (activeIndex === null) return; function onKeyDown(event: KeyboardEvent) { if (event.key === "Escape") setActiveIndex(null); if (event.key === "ArrowRight") setActiveIndex((c) => c === null ? c : Math.min(c + 1, photos.length - 1)); if (event.key === "ArrowLeft") setActiveIndex((c) => c === null ? c : Math.max(c - 1, 0)); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [activeIndex, photos.length]);
 
   return <WeddingShell wide screen>
     <div className="gallery-refresh-surface" ref={refreshSurfaceRef} onTouchStart={handlePullStart} onTouchEnd={handlePullEnd} onTouchCancel={handlePullEnd}>
@@ -252,6 +259,6 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
         {!loading && !error && hasRequested && photos.length === 0 && <EmptyGalleryState href={uploadHref} />}
       </div>
     </div>
-    {active && activeIndex !== null && <PhotoLightbox photos={photos} activeIndex={activeIndex} slug={slug} guestCode={verifiedCode} onClose={() => setActiveIndex(null)} onSelect={setActiveIndex} onMediaError={refreshMediaUrls} />}
+    {active && activeIndex !== null && <PhotoLightbox photos={photos} activeIndex={activeIndex} totalCount={totalCount} hasMore={hasMore} slug={slug} guestCode={verifiedCode} onClose={() => setActiveIndex(null)} onSelect={setActiveIndex} onMediaError={refreshMediaUrls} />}
   </WeddingShell>;
 }

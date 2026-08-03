@@ -1,7 +1,7 @@
 import { approvedPhotos, countApprovedPhotos, getEventBySlug } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
-import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
+import { previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { objectExists, signedUrl } from "@/lib/storage/backblaze";
 
 const GALLERY_SIGNED_URL_EXPIRES_IN = 300;
@@ -14,16 +14,42 @@ async function toGalleryPhoto(photo: Record<string, unknown>) {
     const mimeType = String(photo.mime_type ?? "");
     const mediaType = mimeType.startsWith("video/") ? "video" : "image";
     const thumbnailPath = thumbnailPathForStoragePath(path);
+
+    if (mediaType === "image") {
+      const previewPath = previewPathForStoragePath(path);
+      const [hasThumbnail, hasPreview] = await Promise.all([
+        objectExists(thumbnailPath).catch(() => false),
+        objectExists(previewPath).catch(() => false),
+      ]);
+      const [thumbnailUrl, previewUrl, fallbackUrl] = await Promise.all([
+        hasThumbnail ? signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),
+        hasPreview ? signedUrl(previewPath, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),
+        !hasThumbnail && !hasPreview ? signedUrl(path, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),
+      ]);
+
+      return {
+        id: photo.id,
+        url: previewUrl ?? thumbnailUrl ?? fallbackUrl,
+        thumbnailUrl,
+        previewUrl,
+        mediaType,
+        mimeType,
+        guestName: (photo.guests as { name?: string } | undefined)?.name,
+        createdAt: photo.created_at,
+      };
+    }
+
     const [url, hasVideoThumbnail] = await Promise.all([
       signedUrl(path, GALLERY_SIGNED_URL_EXPIRES_IN),
-      mediaType === "video" ? objectExists(thumbnailPath).catch(() => false) : Promise.resolve(false),
+      objectExists(thumbnailPath).catch(() => false),
     ]);
-    const thumbnailUrl = mediaType === "image" || hasVideoThumbnail ? await signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : undefined;
+    const thumbnailUrl = hasVideoThumbnail ? await signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : undefined;
 
     return {
       id: photo.id,
       url,
       thumbnailUrl,
+      previewUrl: undefined,
       mediaType,
       mimeType,
       guestName: (photo.guests as { name?: string } | undefined)?.name,

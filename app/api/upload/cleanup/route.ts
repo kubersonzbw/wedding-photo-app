@@ -1,6 +1,6 @@
 import { deleteGuest, getEventBySlug, guestHasPhotos, photoExistsByStoragePath } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
-import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
+import { previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { removeObjects } from "@/lib/storage/backblaze";
 
 function normalizeStoragePaths(value: unknown): string[] {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       if (!(await photoExistsByStoragePath(path))) unregisteredPaths.push(path);
     }
 
-    await removeObjects(unregisteredPaths.flatMap((path) => [path, thumbnailPathForStoragePath(path)]));
+    await removeObjects(unregisteredPaths.flatMap((path) => [path, thumbnailPathForStoragePath(path), previewPathForStoragePath(path)]));
 
     if (!(await guestHasPhotos(guest))) {
       await deleteGuest(guest);

@@ -1,12 +1,13 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
-import { useCallback, useEffect, useState } from "react";
+import { type TouchEvent as ReactTouchEvent, useCallback, useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 
 type Photo = {
   id: string;
   url: string;
   thumbnailUrl?: string;
+  previewUrl?: string;
   mediaType?: "image" | "video";
   guestName?: string;
   createdAt: string;
@@ -34,7 +35,7 @@ function photoDetails(photo: Photo) {
 }
 
 function mediaPreviewSrc(photo: Photo) {
-  return photo.mediaType === "video" ? photo.thumbnailUrl ?? photo.url : photo.url;
+  return photo.previewUrl ?? photo.thumbnailUrl ?? photo.url;
 }
 
 function startBrowserDownload(url: string) {
@@ -48,16 +49,153 @@ function startBrowserDownload(url: string) {
   link.remove();
 }
 
-function MediaSlide({
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function touchDistance(touches: ReactTouchEvent["touches"]) {
+  const first = touches[0];
+  const second = touches[1];
+  if (!first || !second) return 0;
+  return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+}
+
+function ZoomableImage({
   photo,
   active,
   onMediaClick,
   onMediaError,
+  onZoomChange,
 }: {
   photo: Photo;
   active: boolean;
   onMediaClick: () => void;
   onMediaError?: () => void;
+  onZoomChange: (zoomed: boolean) => void;
+}) {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
+  const panRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const movedRef = useRef(false);
+  const zoomed = scale > 1.02;
+
+  useEffect(() => {
+    onZoomChange(active && zoomed);
+  }, [active, onZoomChange, zoomed]);
+
+  useEffect(() => {
+    if (active) return;
+    const timer = window.setTimeout(() => {
+      setScale(1);
+      setOffset({ x: 0, y: 0 });
+      pinchRef.current = null;
+      panRef.current = null;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [active]);
+
+  function resetZoom() {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  }
+
+  function handleTouchStart(event: ReactTouchEvent<HTMLDivElement>) {
+    if (!active) return;
+    movedRef.current = false;
+    if (event.touches.length === 2) {
+      pinchRef.current = { distance: touchDistance(event.touches), scale };
+      panRef.current = null;
+      event.stopPropagation();
+      return;
+    }
+    if (event.touches.length === 1 && zoomed) {
+      const touch = event.touches[0];
+      if (!touch) return;
+      panRef.current = { x: touch.clientX, y: touch.clientY, offsetX: offset.x, offsetY: offset.y };
+      event.stopPropagation();
+    }
+  }
+
+  function handleTouchMove(event: ReactTouchEvent<HTMLDivElement>) {
+    if (!active) return;
+    if (event.touches.length === 2 && pinchRef.current) {
+      const distance = touchDistance(event.touches);
+      if (distance <= 0) return;
+      const nextScale = clamp(pinchRef.current.scale * (distance / pinchRef.current.distance), 1, 4);
+      movedRef.current = true;
+      event.preventDefault();
+      event.stopPropagation();
+      setScale(nextScale);
+      if (nextScale <= 1.02) setOffset({ x: 0, y: 0 });
+      return;
+    }
+
+    if (event.touches.length === 1 && panRef.current && zoomed) {
+      const touch = event.touches[0];
+      if (!touch) return;
+      const maxOffset = 140 * scale;
+      movedRef.current = true;
+      event.preventDefault();
+      event.stopPropagation();
+      setOffset({
+        x: clamp(panRef.current.offsetX + touch.clientX - panRef.current.x, -maxOffset, maxOffset),
+        y: clamp(panRef.current.offsetY + touch.clientY - panRef.current.y, -maxOffset, maxOffset),
+      });
+    }
+  }
+
+  function handleTouchEnd() {
+    pinchRef.current = null;
+    panRef.current = null;
+    if (scale <= 1.02) resetZoom();
+  }
+
+  return (
+    <div
+      className={`lightbox-zoom-wrap${zoomed ? " is-zoomed" : ""}`}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        if (zoomed) resetZoom();
+        else setScale(2.25);
+      }}
+    >
+      <img
+        className="lightbox-media"
+        src={mediaPreviewSrc(photo)}
+        alt={active ? "Duże zdjęcie z wesela dodane przez gościa" : "Podgląd sąsiedniego wspomnienia"}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (movedRef.current) {
+            movedRef.current = false;
+            return;
+          }
+          onMediaClick();
+        }}
+        onError={onMediaError}
+        draggable={false}
+        style={{ transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})` }}
+      />
+    </div>
+  );
+}
+
+function MediaSlide({
+  photo,
+  active,
+  onMediaClick,
+  onMediaError,
+  onZoomChange,
+}: {
+  photo: Photo;
+  active: boolean;
+  onMediaClick: () => void;
+  onMediaError?: () => void;
+  onZoomChange: (zoomed: boolean) => void;
 }) {
   if (photo.mediaType === "video" && active) {
     return (
@@ -92,24 +230,14 @@ function MediaSlide({
     );
   }
 
-  return (
-    <img
-      className="lightbox-media"
-      src={mediaPreviewSrc(photo)}
-      alt={active ? "Duże zdjęcie z wesela dodane przez gościa" : "Podgląd sąsiedniego wspomnienia"}
-      onClick={(event) => {
-        event.stopPropagation();
-        onMediaClick();
-      }}
-      onError={onMediaError}
-      draggable={false}
-    />
-  );
+  return <ZoomableImage photo={photo} active={active} onMediaClick={onMediaClick} onMediaError={onMediaError} onZoomChange={onZoomChange} />;
 }
 
 export default function PhotoLightbox({
   photos,
   activeIndex,
+  totalCount,
+  hasMore,
   slug,
   guestCode,
   onClose,
@@ -118,6 +246,8 @@ export default function PhotoLightbox({
 }: {
   photos: Photo[];
   activeIndex: number;
+  totalCount?: number;
+  hasMore?: boolean;
   slug: string;
   guestCode: string;
   onClose: () => void;
@@ -127,17 +257,19 @@ export default function PhotoLightbox({
   const [downloading, setDownloading] = useState(false);
   const [downloadLabel, setDownloadLabel] = useState("Pobierz");
   const [controlsHidden, setControlsHidden] = useState(false);
+  const [zoomedMedia, setZoomedMedia] = useState(false);
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     containScroll: false,
     dragFree: false,
     duration: 24,
-    loop: photos.length > 1,
+    loop: photos.length > 1 && !hasMore,
     skipSnaps: false,
     startIndex: activeIndex,
+    watchDrag: !zoomedMedia,
   });
   const photo = photos[activeIndex];
-  const total = photos.length;
+  const total = Math.max(totalCount ?? photos.length, photos.length);
 
   const selectCurrentSlide = useCallback(() => {
     if (!emblaApi) return;
@@ -145,6 +277,7 @@ export default function PhotoLightbox({
     onSelect(nextIndex);
     setControlsHidden(false);
     setDownloadLabel("Pobierz");
+    setZoomedMedia(false);
   }, [emblaApi, onSelect]);
 
   useEffect(() => {
@@ -189,12 +322,14 @@ export default function PhotoLightbox({
   function scrollPrevious() {
     setControlsHidden(false);
     setDownloadLabel("Pobierz");
+    setZoomedMedia(false);
     emblaApi?.scrollPrev();
   }
 
   function scrollNext() {
     setControlsHidden(false);
     setDownloadLabel("Pobierz");
+    setZoomedMedia(false);
     emblaApi?.scrollNext();
   }
 
@@ -239,6 +374,7 @@ export default function PhotoLightbox({
                 active={index === activeIndex}
                 onMediaClick={() => setControlsHidden((hidden) => !hidden)}
                 onMediaError={onMediaError}
+                onZoomChange={setZoomedMedia}
               />
             </div>
           ))}
