@@ -17,6 +17,8 @@ type DownloadPayload = {
   url: string;
 };
 
+const LIGHTBOX_RENDER_WINDOW = 2;
+
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", {
   day: "2-digit",
   month: "short",
@@ -51,6 +53,13 @@ function startBrowserDownload(url: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function shouldRenderSlideMedia(index: number, activeIndex: number, total: number, loop: boolean) {
+  const distance = Math.abs(index - activeIndex);
+  if (distance <= LIGHTBOX_RENDER_WINDOW) return true;
+  if (!loop || total <= 0) return false;
+  return total - distance <= LIGHTBOX_RENDER_WINDOW;
 }
 
 function touchDistance(touches: ReactTouchEvent["touches"]) {
@@ -168,6 +177,8 @@ function ZoomableImage({
         className="lightbox-media"
         src={mediaPreviewSrc(photo)}
         alt={active ? "Duże zdjęcie z wesela dodane przez gościa" : "Podgląd sąsiedniego wspomnienia"}
+        loading={active ? "eager" : "lazy"}
+        decoding="async"
         onClick={(event) => {
           event.stopPropagation();
           if (movedRef.current) {
@@ -258,12 +269,13 @@ export default function PhotoLightbox({
   const [downloadLabel, setDownloadLabel] = useState("Pobierz");
   const [controlsHidden, setControlsHidden] = useState(false);
   const [zoomedMedia, setZoomedMedia] = useState(false);
+  const lightboxLoops = photos.length > 1 && !hasMore;
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     containScroll: false,
     dragFree: false,
     duration: 24,
-    loop: photos.length > 1 && !hasMore,
+    loop: lightboxLoops,
     skipSnaps: false,
     startIndex: activeIndex,
     watchDrag: !zoomedMedia,
@@ -369,13 +381,15 @@ export default function PhotoLightbox({
         <div className="lightbox-track">
           {photos.map((item, index) => (
             <div className="lightbox-slide" key={item.id} aria-hidden={index !== activeIndex}>
-              <MediaSlide
-                photo={item}
-                active={index === activeIndex}
-                onMediaClick={() => setControlsHidden((hidden) => !hidden)}
-                onMediaError={onMediaError}
-                onZoomChange={setZoomedMedia}
-              />
+              {shouldRenderSlideMedia(index, activeIndex, photos.length, lightboxLoops)
+                ? <MediaSlide
+                    photo={item}
+                    active={index === activeIndex}
+                    onMediaClick={() => setControlsHidden((hidden) => !hidden)}
+                    onMediaError={onMediaError}
+                    onZoomChange={setZoomedMedia}
+                  />
+                : <div className="lightbox-slide-placeholder" aria-hidden="true" />}
             </div>
           ))}
         </div>

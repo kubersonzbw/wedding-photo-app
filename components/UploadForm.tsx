@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { galleryHref } from "@/lib/events/config";
-import { validatePhotoList } from "@/lib/photos/validation";
+import { MAX_FILES, validatePhotoList } from "@/lib/photos/validation";
 import BrokenHeartIcon from "@/components/BrokenHeartIcon";
 import UploadDropzone from "@/components/UploadDropzone";
 
@@ -234,6 +234,22 @@ function isVideoFile(file: File) {
 
 function isImageFile(file: File) {
   return file.type.startsWith("image/");
+}
+
+function fileDedupeKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}:${file.type}`;
+}
+
+function mergeUniqueFiles(currentFiles: File[], nextFiles: File[]) {
+  const seen = new Set(currentFiles.map(fileDedupeKey));
+  const uniqueNextFiles = nextFiles.filter((file) => {
+    const key = fileDedupeKey(file);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return [...currentFiles, ...uniqueNextFiles].slice(0, MAX_FILES);
 }
 
 function canvasToJpegBlob(canvas: HTMLCanvasElement) {
@@ -557,10 +573,11 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
   }, [initialCode]);
 
   function handleFilesChange(files: File[]) {
-    setSelectedFiles(files);
+    setSelectedFiles((currentFiles) => mergeUniqueFiles(currentFiles, files));
     setUploadedCount(0);
     setError(null);
     setRetryPending(false);
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   async function submit() {
@@ -696,7 +713,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
         ? `Wysłano ${completedCount} z ${totalCount} plików. Część plików nie została dodana. Spróbuj wysłać pozostałe ponownie.`
         : uploadErrorMessage(e, guestId));
       if (completedCount > 0) {
-        setSelectedFiles((files) => files.slice(completedCount));
+        setSelectedFiles(selectedFiles.slice(completedCount));
         setRetryPending(true);
         if (fileRef.current) fileRef.current.value = "";
       }
