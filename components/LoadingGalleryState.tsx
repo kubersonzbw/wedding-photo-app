@@ -5,7 +5,7 @@ export default function LoadingGalleryState({ showCopy = true }: { showCopy?: bo
       <h2>Przygotowujemy galerię…</h2>
     </div>}
     <div className="memory-grid skeleton-grid">
-      {Array.from({ length: 8 }).map((_, i) => <div className="skeleton-tile" key={i}><span /><span /></div>)}
+      {Array.from({ length: 15 }).map((_, i) => <div className="skeleton-tile" key={i}><span /><span /></div>)}
     </div>
   </section>;
 }

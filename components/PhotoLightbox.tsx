@@ -34,9 +34,15 @@ function photoDetails(photo: Photo) {
   return formattedDate ? `Dodane przez ${guestName} • ${formattedDate}` : `Dodane przez ${guestName}`;
 }
 
-function mediaPreviewSrc(photo: Photo, active: boolean) {
-  if (active) return photo.previewUrl ?? photo.thumbnailUrl ?? photo.url;
+function mediaBaseSrc(photo: Photo) {
   return photo.thumbnailUrl ?? photo.previewUrl ?? photo.url;
+}
+
+function mediaEnhancedSrc(photo: Photo, shouldLoadEnhanced: boolean) {
+  if (!shouldLoadEnhanced) return undefined;
+  const previewSrc = photo.mediaType === "video" ? photo.previewUrl : photo.previewUrl ?? photo.url;
+  if (!previewSrc) return undefined;
+  return previewSrc === mediaBaseSrc(photo) ? undefined : previewSrc;
 }
 
 function startBrowserDownload(url: string) {
@@ -64,6 +70,7 @@ function touchDistance(touches: ReactTouchEvent["touches"]) {
 function ZoomableImage({
   photo,
   active,
+  loadEnhanced,
   onMediaClick,
   onMediaError,
   onZoomChange,
@@ -71,6 +78,7 @@ function ZoomableImage({
 }: {
   photo: Photo;
   active: boolean;
+  loadEnhanced: boolean;
   onMediaClick: () => void;
   onMediaError?: () => void;
   onZoomChange: (zoomed: boolean) => void;
@@ -78,10 +86,14 @@ function ZoomableImage({
 }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [loadedEnhancedSrc, setLoadedEnhancedSrc] = useState<string | undefined>();
   const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
   const panRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const movedRef = useRef(false);
   const zoomed = scale > 1.02;
+  const baseSrc = mediaBaseSrc(photo);
+  const enhancedSrc = mediaEnhancedSrc(photo, loadEnhanced);
+  const enhancedLoaded = Boolean(enhancedSrc && loadedEnhancedSrc === enhancedSrc);
 
   useEffect(() => {
     onZoomChange(active && zoomed);
@@ -181,12 +193,8 @@ function ZoomableImage({
         else setScale(2.25);
       }}
     >
-      <img
-        className="lightbox-media"
-        src={mediaPreviewSrc(photo, active)}
-        alt={active ? "Duże zdjęcie z wesela dodane przez gościa" : "Podgląd sąsiedniego wspomnienia"}
-        loading={active ? "eager" : "lazy"}
-        decoding="async"
+      <div
+        className="lightbox-image-stack"
         onClick={(event) => {
           event.stopPropagation();
           if (movedRef.current) {
@@ -195,10 +203,29 @@ function ZoomableImage({
           }
           onMediaClick();
         }}
-        onError={onMediaError}
-        draggable={false}
         style={{ transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})` }}
-      />
+      >
+        <img
+          className="lightbox-media lightbox-image-layer"
+          src={baseSrc}
+          alt={active ? "Duże zdjęcie z wesela dodane przez gościa" : "Podgląd sąsiedniego wspomnienia"}
+          loading={active ? "eager" : "lazy"}
+          decoding="async"
+          onError={onMediaError}
+          draggable={false}
+        />
+        {enhancedSrc && <img
+          className={`lightbox-media lightbox-image-layer lightbox-image-enhanced${enhancedLoaded ? " is-loaded" : ""}`}
+          src={enhancedSrc}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          onLoad={() => setLoadedEnhancedSrc(enhancedSrc)}
+          onError={onMediaError}
+          draggable={false}
+        />}
+      </div>
     </div>
   );
 }
@@ -206,6 +233,7 @@ function ZoomableImage({
 function MediaSlide({
   photo,
   active,
+  loadEnhanced,
   onMediaClick,
   onMediaError,
   onZoomChange,
@@ -213,6 +241,7 @@ function MediaSlide({
 }: {
   photo: Photo;
   active: boolean;
+  loadEnhanced: boolean;
   onMediaClick: () => void;
   onMediaError?: () => void;
   onZoomChange: (zoomed: boolean) => void;
@@ -244,7 +273,7 @@ function MediaSlide({
     );
   }
 
-  return <ZoomableImage photo={photo} active={active} onMediaClick={onMediaClick} onMediaError={onMediaError} onZoomChange={onZoomChange} onZoomGestureChange={onZoomGestureChange} />;
+  return <ZoomableImage photo={photo} active={active} loadEnhanced={loadEnhanced} onMediaClick={onMediaClick} onMediaError={onMediaError} onZoomChange={onZoomChange} onZoomGestureChange={onZoomGestureChange} />;
 }
 
 function adjacentPhotoIndex(index: number, direction: -1 | 1, loadedCount: number, canLoop: boolean) {
@@ -426,6 +455,7 @@ export default function PhotoLightbox({
               <MediaSlide
                 photo={item}
                 active={index === activeIndex}
+                loadEnhanced
                 onMediaClick={() => setControlsHidden((hidden) => !hidden)}
                 onMediaError={() => onMediaError?.(index)}
                 onZoomChange={setLightboxZoomedMedia}
