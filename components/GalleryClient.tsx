@@ -244,8 +244,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
 
   const openPhoto = useCallback((index: number) => {
     setActiveIndex(index);
-    void refreshMediaUrls(index);
-  }, [refreshMediaUrls]);
+  }, []);
 
   useEffect(() => {
     if (activeIndex === null || !verifiedCode || !hasMore || loadingMore) return;

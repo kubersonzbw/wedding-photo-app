@@ -62,7 +62,9 @@ export default function GalleryGrid({ photos, onOpen, onMediaError }: { photos: 
             const index = row * GRID_COLUMNS + column;
             return <button key={photo.id} onClick={() => onOpen(index)} className="memory-tile">
               {photo.mediaType === "video" ? <>
-                {photo.thumbnailUrl ? <img src={photo.thumbnailUrl} alt="Miniatura filmu z wesela dodanego przez gościa" loading="lazy" decoding="async" onError={() => onMediaError?.(index)} /> : <video src={photo.url} muted playsInline preload="metadata" onError={() => onMediaError?.(index)} />}
+                {photo.thumbnailUrl
+                  ? <img src={photo.thumbnailUrl} alt="Miniatura filmu z wesela dodanego przez gościa" loading="lazy" decoding="async" onError={() => onMediaError?.(index)} />
+                  : <span className="memory-video-placeholder" aria-hidden="true" />}
                 <span className="memory-video-badge" aria-hidden="true">▶</span>
               </> : <img src={photo.thumbnailUrl ?? photo.previewUrl ?? photo.url} alt="Zdjęcie z wesela dodane przez gościa" loading="lazy" decoding="async" onError={() => onMediaError?.(index)} />}
               {photo.guestName && <span className="memory-author">od {photo.guestName}</span>}

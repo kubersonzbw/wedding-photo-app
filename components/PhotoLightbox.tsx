@@ -34,8 +34,9 @@ function photoDetails(photo: Photo) {
   return formattedDate ? `Dodane przez ${guestName} • ${formattedDate}` : `Dodane przez ${guestName}`;
 }
 
-function mediaPreviewSrc(photo: Photo) {
-  return photo.previewUrl ?? photo.thumbnailUrl ?? photo.url;
+function mediaPreviewSrc(photo: Photo, active: boolean) {
+  if (active) return photo.previewUrl ?? photo.thumbnailUrl ?? photo.url;
+  return photo.thumbnailUrl ?? photo.previewUrl ?? photo.url;
 }
 
 function startBrowserDownload(url: string) {
@@ -182,7 +183,7 @@ function ZoomableImage({
     >
       <img
         className="lightbox-media"
-        src={mediaPreviewSrc(photo)}
+        src={mediaPreviewSrc(photo, active)}
         alt={active ? "Duże zdjęcie z wesela dodane przez gościa" : "Podgląd sąsiedniego wspomnienia"}
         loading={active ? "eager" : "lazy"}
         decoding="async"
@@ -237,16 +238,9 @@ function MediaSlide({
 
   if (photo.mediaType === "video" && !photo.thumbnailUrl) {
     return (
-      <video
-        className="lightbox-media"
-        src={photo.url}
-        muted
-        playsInline
-        preload="metadata"
-        onClick={(event) => event.stopPropagation()}
-        onError={onMediaError}
-        onContextMenu={(event) => event.preventDefault()}
-      />
+      <div className="lightbox-media lightbox-video-placeholder" onClick={(event) => event.stopPropagation()}>
+        <span aria-hidden="true">▶</span>
+      </div>
     );
   }
 
