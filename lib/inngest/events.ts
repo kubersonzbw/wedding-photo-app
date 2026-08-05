@@ -5,6 +5,7 @@ export const UPLOAD_BATCH_COMPLETED_EVENT = "upload/batch.completed" as const;
 export type CompletedUploadEventFile = PhotoFileInfo & {
   photoId: string;
   storagePath: string;
+  thumbnailStoragePath?: string;
 };
 
 export type UploadNotificationPayload = {

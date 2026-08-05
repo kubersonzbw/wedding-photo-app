@@ -8,13 +8,21 @@ import { getGuestById, updatePendingPhotoStatus } from "@/lib/supabase/admin";
 const UPLOAD_PROCESSING_CONCURRENCY = Number(process.env.INNGEST_UPLOAD_PROCESSING_CONCURRENCY ?? process.env.UPLOAD_DERIVATIVE_CONCURRENCY ?? 1);
 
 function uploadBatchData(value: unknown) {
-  return value as UploadBatchCompletedEventData;
+  if (!value || typeof value !== "object") return null;
+  const data = value as Partial<UploadBatchCompletedEventData>;
+  if (!data.batchId || !data.eventId || !data.slug || !data.guestId || !Array.isArray(data.uploads)) return null;
+  return data as UploadBatchCompletedEventData;
 }
 
 async function ensureImageDerivatives(upload: CompletedUploadEventFile) {
-  if (!isThumbnailSupported(upload.type)) return;
+  if (!isThumbnailSupported(upload.type)) {
+    return {
+      thumbnail_path: upload.thumbnailStoragePath || null,
+      preview_path: null,
+    };
+  }
 
-  const thumbnailPath = thumbnailPathForStoragePath(upload.storagePath);
+  const thumbnailPath = upload.thumbnailStoragePath || thumbnailPathForStoragePath(upload.storagePath);
   const previewPath = previewPathForStoragePath(upload.storagePath);
   const [hasThumbnail, hasPreview] = await Promise.all([
     objectExists(thumbnailPath).catch(() => false),
@@ -27,6 +35,11 @@ async function ensureImageDerivatives(upload: CompletedUploadEventFile) {
       preview: !hasPreview,
     });
   }
+
+  return {
+    thumbnail_path: thumbnailPath,
+    preview_path: previewPath,
+  };
 }
 
 export const processUploadBatch = inngest.createFunction(
@@ -42,6 +55,11 @@ export const processUploadBatch = inngest.createFunction(
     },
     onFailure: async ({ event, step, error }) => {
       const data = uploadBatchData(event.data.event.data);
+      if (!data) {
+        console.error("Upload batch failure event is missing upload payload", { message: error.message });
+        return;
+      }
+
       await step.run("mark-pending-uploads-failed", async () => {
         await Promise.all(data.uploads.map((upload) => updatePendingPhotoStatus(upload.photoId, "failed")));
       });
@@ -56,12 +74,14 @@ export const processUploadBatch = inngest.createFunction(
   },
   async ({ event, step, logger }) => {
     const data = uploadBatchData(event.data);
+    if (!data) throw new Error(`Invalid ${UPLOAD_BATCH_COMPLETED_EVENT} payload.`);
+
     const approvedPhotoIds: string[] = [];
 
     for (const upload of data.uploads) {
       const approvedPhotoId = await step.run(`process-upload-${upload.photoId}`, async () => {
-        await ensureImageDerivatives(upload);
-        await updatePendingPhotoStatus(upload.photoId, "approved");
+        const derivativePaths = await ensureImageDerivatives(upload);
+        await updatePendingPhotoStatus(upload.photoId, "approved", derivativePaths);
         return upload.photoId;
       });
       approvedPhotoIds.push(approvedPhotoId);

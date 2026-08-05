@@ -3,6 +3,7 @@ import { UPLOAD_BATCH_COMPLETED_EVENT, type CompletedUploadEventFile, type Uploa
 import { getEventBySlug, insertPhotos } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
 import { validatePhotoFileInfoList } from "@/lib/photos/validation";
+import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { objectExists } from "@/lib/storage/backblaze";
 
 type CompletedUpload = CompletedUploadEventFile;
@@ -25,6 +26,7 @@ function normalizeUploads(value: unknown): CompletedUpload[] {
       name: String(item.name ?? ""),
       type: String(item.type ?? ""),
       size: Number(item.size ?? 0),
+      thumbnailStoragePath: String(item.thumbnailStoragePath ?? ""),
     };
   });
 }
@@ -83,6 +85,10 @@ export async function POST(request: Request) {
       if (!upload.photoId || !upload.storagePath.startsWith(`${event.id}/${guestId}/`)) {
         return Response.json({ error: "Nieprawidłowe dane przesłanego zdjęcia." }, { status: 400 });
       }
+
+      if (upload.thumbnailStoragePath && upload.thumbnailStoragePath !== thumbnailPathForStoragePath(upload.storagePath)) {
+        return Response.json({ error: "Nieprawidłowa miniatura przesłanego zdjęcia." }, { status: 400 });
+      }
     }
 
     await runWithConcurrency(uploads, COMPLETE_CONCURRENCY, async (upload) => {
@@ -96,6 +102,7 @@ export async function POST(request: Request) {
       event_id: event.id,
       guest_id: guestId,
       storage_path: upload.storagePath,
+      thumbnail_path: upload.thumbnailStoragePath || null,
       original_filename: upload.name,
       mime_type: upload.type,
       size_bytes: upload.size,

@@ -61,6 +61,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   const mediaRefreshInFlight = useRef(false);
   const newMemoryCheckInFlight = useRef(false);
   const refreshSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const pullStartY = useRef<number | null>(null);
   const pullDistanceRef = useRef(0);
   const uploadParams = new URLSearchParams({ returnTo: "gallery" });
@@ -131,19 +132,22 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     }
   }, [loading, loadingMore, noticeRefreshing, pullRefreshing, slug, totalCount, verifiedCode]);
 
-  const refreshMediaUrls = useCallback(async () => {
+  const refreshMediaUrls = useCallback(async (targetIndex?: number) => {
     if (!verifiedCode || mediaRefreshInFlight.current) return;
     mediaRefreshInFlight.current = true;
     setMediaRefreshing(true);
     try {
-      const limit = Math.min(Math.max(photos.length || PAGE_SIZE, PAGE_SIZE), 120);
-      const res = await fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, guestCode: verifiedCode, limit, offset: 0 }) });
+      const requestedIndex = typeof targetIndex === "number" && Number.isFinite(targetIndex) ? Math.max(0, Math.floor(targetIndex)) : null;
+      const offset = requestedIndex === null ? 0 : Math.floor(requestedIndex / PAGE_SIZE) * PAGE_SIZE;
+      const limit = requestedIndex === null ? Math.min(Math.max(photos.length || PAGE_SIZE, PAGE_SIZE), 120) : PAGE_SIZE;
+      const res = await fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, guestCode: verifiedCode, limit, offset }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Nie udało się odświeżyć galerii.");
       const refreshedPhotos = data.photos ?? [];
       setPhotos((current) => replaceKnownPhotos(current, refreshedPhotos));
-      setTotalCount(Number(data.totalCount) || 0);
-      setHasMore(Boolean(data.hasMore));
+      const nextTotalCount = Number(data.totalCount) || 0;
+      setTotalCount(nextTotalCount);
+      setHasMore(photos.length < nextTotalCount);
     } catch {
       setError("Linki do podglądu wygasły. Odśwież galerię i spróbuj ponownie.");
     } finally {
@@ -214,6 +218,16 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     void load(slug, verifiedCode, false, true).finally(() => setNoticeRefreshing(false));
   }
 
+  const loadNextGalleryPage = useCallback(async () => {
+    if (!hasMore || loadingMore || loading || !verifiedCode) return;
+    await load(slug, verifiedCode, true, true);
+  }, [hasMore, load, loading, loadingMore, slug, verifiedCode]);
+
+  const openPhoto = useCallback((index: number) => {
+    setActiveIndex(index);
+    void refreshMediaUrls(index);
+  }, [refreshMediaUrls]);
+
   useEffect(() => {
     if (activeIndex === null || !verifiedCode || !hasMore || loadingMore) return;
     if (photos.length - activeIndex > LIGHTBOX_PREFETCH_REMAINING) return;
@@ -232,6 +246,15 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     const timer = window.setInterval(() => { void checkForNewMemories(); }, NEW_MEMORY_CHECK_INTERVAL);
     return () => window.clearInterval(timer);
   }, [checkForNewMemories, hasRequested, verifiedCode]);
+  useEffect(() => {
+    const marker = loadMoreRef.current;
+    if (!marker || !hasMore || !verifiedCode) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void loadNextGalleryPage();
+    }, { rootMargin: "900px 0px" });
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [hasMore, loadNextGalleryPage, verifiedCode]);
   useEffect(() => { if (activeIndex === null) return; function onKeyDown(event: KeyboardEvent) { if (event.key === "Escape") setActiveIndex(null); if (event.key === "ArrowRight") setActiveIndex((c) => c === null ? c : Math.min(c + 1, photos.length - 1)); if (event.key === "ArrowLeft") setActiveIndex((c) => c === null ? c : Math.max(c - 1, 0)); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [activeIndex, photos.length]);
 
   return <WeddingShell wide screen>
@@ -254,8 +277,8 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
         {loading && <LoadingGalleryState showCopy={Boolean(initialCode)} />}
         {!loading && error && <ErrorState title={errorTitle} description={errorDescription} onRefresh={invalidCodeError ? undefined : () => load()} />}
         {!loading && !error && mediaRefreshing && <p className="gallery-refresh-note" role="status">Odświeżamy podgląd galerii…</p>}
-        {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={setActiveIndex} onMediaError={refreshMediaUrls} />}
-        {!loading && !error && hasRequested && photos.length > 0 && hasMore && <button className="btn btn-ghost gallery-load-more" onClick={() => load(slug, verifiedCode || draftCode, true)} disabled={loadingMore}>{loadingMore ? "Ładujemy…" : "Pokaż więcej"}</button>}
+        {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={openPhoto} onMediaError={refreshMediaUrls} />}
+        {!loading && !error && hasRequested && photos.length > 0 && hasMore && <div className="gallery-infinite-loader" ref={loadMoreRef} role="status" aria-live="polite"><span className="pull-refresh-spinner" />{loadingMore ? "Ładujemy kolejne wspomnienia…" : "Przewiń dalej"}</div>}
         {!loading && !error && hasRequested && photos.length === 0 && <EmptyGalleryState href={uploadHref} />}
       </div>
     </div>

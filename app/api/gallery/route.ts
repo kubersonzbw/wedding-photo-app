@@ -2,9 +2,14 @@ import { approvedPhotos, countApprovedPhotos, getEventBySlug } from "@/lib/supab
 import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
-import { objectExists, signedUrl } from "@/lib/storage/backblaze";
+import { signedUrl } from "@/lib/storage/backblaze";
 
-const GALLERY_SIGNED_URL_EXPIRES_IN = 300;
+const GALLERY_SIGNED_URL_EXPIRES_IN = 900;
+
+function optionalPath(value: unknown) {
+  const path = String(value ?? "").trim();
+  return path || undefined;
+}
 
 async function toGalleryPhoto(photo: Record<string, unknown>) {
   try {
@@ -13,23 +18,19 @@ async function toGalleryPhoto(photo: Record<string, unknown>) {
 
     const mimeType = String(photo.mime_type ?? "");
     const mediaType = mimeType.startsWith("video/") ? "video" : "image";
-    const thumbnailPath = thumbnailPathForStoragePath(path);
+    const storedThumbnailPath = optionalPath(photo.thumbnail_path);
 
     if (mediaType === "image") {
-      const previewPath = previewPathForStoragePath(path);
-      const [hasThumbnail, hasPreview] = await Promise.all([
-        objectExists(thumbnailPath).catch(() => false),
-        objectExists(previewPath).catch(() => false),
-      ]);
-      const [thumbnailUrl, previewUrl, fallbackUrl] = await Promise.all([
-        hasThumbnail ? signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),
-        hasPreview ? signedUrl(previewPath, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),
-        !hasThumbnail && !hasPreview ? signedUrl(path, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),
+      const thumbnailPath = storedThumbnailPath ?? thumbnailPathForStoragePath(path);
+      const previewPath = optionalPath(photo.preview_path) ?? previewPathForStoragePath(path);
+      const [thumbnailUrl, previewUrl] = await Promise.all([
+        signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN),
+        signedUrl(previewPath, GALLERY_SIGNED_URL_EXPIRES_IN),
       ]);
 
       return {
         id: photo.id,
-        url: previewUrl ?? thumbnailUrl ?? fallbackUrl,
+        url: previewUrl,
         thumbnailUrl,
         previewUrl,
         mediaType,
@@ -39,11 +40,11 @@ async function toGalleryPhoto(photo: Record<string, unknown>) {
       };
     }
 
-    const [url, hasVideoThumbnail] = await Promise.all([
+    const thumbnailPath = storedThumbnailPath;
+    const [url, thumbnailUrl] = await Promise.all([
       signedUrl(path, GALLERY_SIGNED_URL_EXPIRES_IN),
-      objectExists(thumbnailPath).catch(() => false),
+      thumbnailPath ? signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),
     ]);
-    const thumbnailUrl = hasVideoThumbnail ? await signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : undefined;
 
     return {
       id: photo.id,

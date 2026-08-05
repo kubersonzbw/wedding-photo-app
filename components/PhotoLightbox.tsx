@@ -1,6 +1,6 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
-import { type TouchEvent as ReactTouchEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type TouchEvent as ReactTouchEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 
 type Photo = {
@@ -16,8 +16,6 @@ type Photo = {
 type DownloadPayload = {
   url: string;
 };
-
-const LIGHTBOX_RENDER_WINDOW = 2;
 
 const dateFormatter = new Intl.DateTimeFormat("pl-PL", {
   day: "2-digit",
@@ -55,13 +53,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function shouldRenderSlideMedia(index: number, activeIndex: number, total: number, loop: boolean) {
-  const distance = Math.abs(index - activeIndex);
-  if (distance <= LIGHTBOX_RENDER_WINDOW) return true;
-  if (!loop || total <= 0) return false;
-  return total - distance <= LIGHTBOX_RENDER_WINDOW;
-}
-
 function touchDistance(touches: ReactTouchEvent["touches"]) {
   const first = touches[0];
   const second = touches[1];
@@ -75,12 +66,14 @@ function ZoomableImage({
   onMediaClick,
   onMediaError,
   onZoomChange,
+  onZoomGestureChange,
 }: {
   photo: Photo;
   active: boolean;
   onMediaClick: () => void;
   onMediaError?: () => void;
   onZoomChange: (zoomed: boolean) => void;
+  onZoomGestureChange: (active: boolean) => void;
 }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -100,28 +93,40 @@ function ZoomableImage({
       setOffset({ x: 0, y: 0 });
       pinchRef.current = null;
       panRef.current = null;
+      onZoomGestureChange(false);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [active]);
+  }, [active, onZoomGestureChange]);
 
   function resetZoom() {
     setScale(1);
     setOffset({ x: 0, y: 0 });
+    onZoomChange(false);
+    onZoomGestureChange(false);
+  }
+
+  function handleTouchStartCapture(event: ReactTouchEvent<HTMLDivElement>) {
+    if (!active) return;
+    if (event.touches.length >= 2 || zoomed) onZoomGestureChange(true);
   }
 
   function handleTouchStart(event: ReactTouchEvent<HTMLDivElement>) {
     if (!active) return;
     movedRef.current = false;
     if (event.touches.length === 2) {
+      onZoomGestureChange(true);
       pinchRef.current = { distance: touchDistance(event.touches), scale };
       panRef.current = null;
+      if (event.cancelable) event.preventDefault();
       event.stopPropagation();
       return;
     }
     if (event.touches.length === 1 && zoomed) {
       const touch = event.touches[0];
       if (!touch) return;
+      onZoomGestureChange(true);
       panRef.current = { x: touch.clientX, y: touch.clientY, offsetX: offset.x, offsetY: offset.y };
+      if (event.cancelable) event.preventDefault();
       event.stopPropagation();
     }
   }
@@ -154,15 +159,17 @@ function ZoomableImage({
     }
   }
 
-  function handleTouchEnd() {
+  function handleTouchEnd(event: ReactTouchEvent<HTMLDivElement>) {
     pinchRef.current = null;
     panRef.current = null;
+    if (event.touches.length === 0) onZoomGestureChange(false);
     if (scale <= 1.02) resetZoom();
   }
 
   return (
     <div
       className={`lightbox-zoom-wrap${zoomed ? " is-zoomed" : ""}`}
+      onTouchStartCapture={handleTouchStartCapture}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -201,12 +208,14 @@ function MediaSlide({
   onMediaClick,
   onMediaError,
   onZoomChange,
+  onZoomGestureChange,
 }: {
   photo: Photo;
   active: boolean;
   onMediaClick: () => void;
   onMediaError?: () => void;
   onZoomChange: (zoomed: boolean) => void;
+  onZoomGestureChange: (active: boolean) => void;
 }) {
   if (photo.mediaType === "video" && active) {
     return (
@@ -241,7 +250,23 @@ function MediaSlide({
     );
   }
 
-  return <ZoomableImage photo={photo} active={active} onMediaClick={onMediaClick} onMediaError={onMediaError} onZoomChange={onZoomChange} />;
+  return <ZoomableImage photo={photo} active={active} onMediaClick={onMediaClick} onMediaError={onMediaError} onZoomChange={onZoomChange} onZoomGestureChange={onZoomGestureChange} />;
+}
+
+function adjacentPhotoIndex(index: number, direction: -1 | 1, loadedCount: number, canLoop: boolean) {
+  const nextIndex = index + direction;
+  if (nextIndex >= 0 && nextIndex < loadedCount) return nextIndex;
+  if (!canLoop || loadedCount <= 1) return null;
+  return direction === -1 ? loadedCount - 1 : 0;
+}
+
+function getLightboxSlides(photos: Photo[], activeIndex: number, canLoop: boolean) {
+  const previousIndex = adjacentPhotoIndex(activeIndex, -1, photos.length, canLoop);
+  const nextIndex = adjacentPhotoIndex(activeIndex, 1, photos.length, canLoop);
+  const indexes = [previousIndex, activeIndex, nextIndex].filter((index): index is number => index !== null);
+  const uniqueIndexes = [...new Set(indexes)];
+
+  return uniqueIndexes.map((index) => ({ index, photo: photos[index] })).filter((slide): slide is { index: number; photo: Photo } => Boolean(slide.photo));
 }
 
 export default function PhotoLightbox({
@@ -263,50 +288,73 @@ export default function PhotoLightbox({
   guestCode: string;
   onClose: () => void;
   onSelect: (index: number) => void;
-  onMediaError?: () => void;
+  onMediaError?: (index: number) => void;
 }) {
   const [downloading, setDownloading] = useState(false);
   const [downloadLabel, setDownloadLabel] = useState("Pobierz");
   const [controlsHidden, setControlsHidden] = useState(false);
   const [zoomedMedia, setZoomedMedia] = useState(false);
+  const zoomedMediaRef = useRef(false);
+  const zoomGestureActiveRef = useRef(false);
   const lightboxLoops = photos.length > 1 && !hasMore;
+  const lightboxSlides = useMemo(() => getLightboxSlides(photos, activeIndex, lightboxLoops), [activeIndex, lightboxLoops, photos]);
+  const activeSlideIndex = Math.max(0, lightboxSlides.findIndex((slide) => slide.index === activeIndex));
+  const setLightboxZoomedMedia = useCallback((zoomed: boolean) => {
+    zoomedMediaRef.current = zoomed;
+    setZoomedMedia(zoomed);
+  }, []);
+  const setLightboxZoomGestureActive = useCallback((active: boolean) => {
+    zoomGestureActiveRef.current = active;
+  }, []);
+  const clearZoomLocks = useCallback(() => {
+    zoomedMediaRef.current = false;
+    zoomGestureActiveRef.current = false;
+    setZoomedMedia(false);
+  }, []);
+  const watchLightboxDrag = useCallback((_api: unknown, event: MouseEvent | TouchEvent) => {
+    if (zoomedMediaRef.current || zoomGestureActiveRef.current) return false;
+    if (event instanceof TouchEvent && event.touches.length > 1) return false;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".lightbox-zoom-wrap.is-zoomed")) return false;
+    return true;
+  }, []);
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     containScroll: false,
     dragFree: false,
     duration: 24,
-    loop: lightboxLoops,
+    loop: false,
     skipSnaps: false,
-    startIndex: activeIndex,
-    watchDrag: !zoomedMedia,
+    startIndex: activeSlideIndex,
+    watchDrag: watchLightboxDrag,
   });
   const photo = photos[activeIndex];
   const total = Math.max(totalCount ?? photos.length, photos.length);
 
   const selectCurrentSlide = useCallback(() => {
     if (!emblaApi) return;
-    const nextIndex = emblaApi.selectedScrollSnap();
-    onSelect(nextIndex);
+    const selectedSlide = lightboxSlides[emblaApi.selectedScrollSnap()];
+    if (!selectedSlide) return;
+    if (selectedSlide.index !== activeIndex) onSelect(selectedSlide.index);
     setControlsHidden(false);
     setDownloadLabel("Pobierz");
-    setZoomedMedia(false);
-  }, [emblaApi, onSelect]);
+    clearZoomLocks();
+  }, [activeIndex, clearZoomLocks, emblaApi, lightboxSlides, onSelect]);
 
   useEffect(() => {
     if (!emblaApi) return;
     emblaApi.on("select", selectCurrentSlide);
-    emblaApi.on("reInit", selectCurrentSlide);
 
     return () => {
       emblaApi.off("select", selectCurrentSlide);
-      emblaApi.off("reInit", selectCurrentSlide);
     };
   }, [emblaApi, selectCurrentSlide]);
 
   useEffect(() => {
     if (!emblaApi) return;
-    if (emblaApi.selectedScrollSnap() !== activeIndex) emblaApi.scrollTo(activeIndex);
-  }, [activeIndex, emblaApi]);
+    emblaApi.reInit();
+    emblaApi.scrollTo(activeSlideIndex, true);
+  }, [activeIndex, activeSlideIndex, emblaApi, lightboxSlides.length]);
 
   async function handleDownload() {
     if (downloading || !photo) return;
@@ -334,14 +382,14 @@ export default function PhotoLightbox({
   function scrollPrevious() {
     setControlsHidden(false);
     setDownloadLabel("Pobierz");
-    setZoomedMedia(false);
+    clearZoomLocks();
     emblaApi?.scrollPrev();
   }
 
   function scrollNext() {
     setControlsHidden(false);
     setDownloadLabel("Pobierz");
-    setZoomedMedia(false);
+    clearZoomLocks();
     emblaApi?.scrollNext();
   }
 
@@ -377,19 +425,18 @@ export default function PhotoLightbox({
 
       {total > 1 && <button className="round-control lightbox-nav lightbox-prev" onClick={scrollPrevious} aria-label="Poprzedni plik">‹</button>}
 
-      <div className="lightbox-stage" ref={emblaRef} onClick={(event) => event.stopPropagation()}>
+      <div className={`lightbox-stage${zoomedMedia ? " is-zoom-locked" : ""}`} ref={emblaRef} onClick={(event) => event.stopPropagation()}>
         <div className="lightbox-track">
-          {photos.map((item, index) => (
+          {lightboxSlides.map(({ photo: item, index }) => (
             <div className="lightbox-slide" key={item.id} aria-hidden={index !== activeIndex}>
-              {shouldRenderSlideMedia(index, activeIndex, photos.length, lightboxLoops)
-                ? <MediaSlide
-                    photo={item}
-                    active={index === activeIndex}
-                    onMediaClick={() => setControlsHidden((hidden) => !hidden)}
-                    onMediaError={onMediaError}
-                    onZoomChange={setZoomedMedia}
-                  />
-                : <div className="lightbox-slide-placeholder" aria-hidden="true" />}
+              <MediaSlide
+                photo={item}
+                active={index === activeIndex}
+                onMediaClick={() => setControlsHidden((hidden) => !hidden)}
+                onMediaError={() => onMediaError?.(index)}
+                onZoomChange={setLightboxZoomedMedia}
+                onZoomGestureChange={setLightboxZoomGestureActive}
+              />
             </div>
           ))}
         </div>

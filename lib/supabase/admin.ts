@@ -2,6 +2,10 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 type PhotoStatus = "approved" | "hidden";
 type StoredPhotoStatus = PhotoStatus | "pending" | "failed";
+type PhotoStatusPatch = {
+  thumbnail_path?: string | null;
+  preview_path?: string | null;
+};
 
 export function assertSupabaseAdminEnv() {
   if (!url || !serviceKey) throw new Error("Missing Supabase server environment variables.");
@@ -95,8 +99,8 @@ export async function updatePhotoStatus(id: string, status: StoredPhotoStatus) {
   return supabaseFetch(`/rest/v1/photos?id=eq.${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) });
 }
 
-export async function updatePendingPhotoStatus(id: string, status: Exclude<StoredPhotoStatus, "pending">) {
-  return supabaseFetch(`/rest/v1/photos?id=eq.${encodeURIComponent(id)}&status=eq.pending`, { method: "PATCH", body: JSON.stringify({ status }) });
+export async function updatePendingPhotoStatus(id: string, status: Exclude<StoredPhotoStatus, "pending">, patch: PhotoStatusPatch = {}) {
+  return supabaseFetch(`/rest/v1/photos?id=eq.${encodeURIComponent(id)}&status=eq.pending`, { method: "PATCH", body: JSON.stringify({ status, ...patch }) });
 }
 
 export async function deletePhoto(id: string) {

@@ -22,6 +22,8 @@ create table public.photos (
   event_id uuid not null references public.events(id) on delete cascade,
   guest_id uuid not null references public.guests(id) on delete cascade,
   storage_path text not null unique,
+  thumbnail_path text,
+  preview_path text,
   original_filename text,
   mime_type text not null,
   size_bytes bigint not null,

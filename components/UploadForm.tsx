@@ -337,7 +337,7 @@ async function createImageThumbnail(file: File) {
 }
 
 async function uploadThumbnail(file: File, upload: UploadItem) {
-  if ((!isImageFile(file) && !isVideoFile(file)) || !upload.signedThumbnailUrl) return;
+  if ((!isImageFile(file) && !isVideoFile(file)) || !upload.signedThumbnailUrl) return false;
 
   try {
     const thumbnail = isVideoFile(file) ? await createVideoThumbnail(file) : await createImageThumbnail(file);
@@ -348,8 +348,10 @@ async function uploadThumbnail(file: File, upload: UploadItem) {
     });
 
     if (!thumbnailRes.ok) throw new UploadStepError(`Miniatura nie przeszła do Backblaze. Status: ${thumbnailRes.status}.`, "thumbnail-put");
+    return true;
   } catch (thumbnailError) {
     console.warn("Nie udało się przygotować miniatury.", thumbnailError);
+    return false;
   }
 }
 
@@ -444,7 +446,11 @@ async function uploadSignedFile(file: File, upload: UploadItem, context: UploadC
   if (upload.uploadMethod === "multipart") await uploadMultipartFile(file, upload, context);
   else await uploadSingleFile(file, upload, context);
 
-  await uploadThumbnail(file, upload);
+  const thumbnailUploaded = await uploadThumbnail(file, upload);
+  return {
+    ...upload,
+    thumbnailStoragePath: thumbnailUploaded ? upload.thumbnailStoragePath : undefined,
+  };
 }
 
 function shouldRetryWithFreshSignedUrl(error: unknown, upload: UploadItem) {
@@ -624,7 +630,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
           let completedUpload = upload;
           currentStage = upload.uploadMethod === "multipart" ? "multipart-upload" : "single-upload";
           try {
-            await uploadSignedFile(file, upload, uploadContext);
+            completedUpload = await uploadSignedFile(file, upload, uploadContext);
           } catch (uploadError) {
             if (!shouldRetryWithFreshSignedUrl(uploadError, upload)) throw uploadError;
 
@@ -643,7 +649,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
             completedUpload = retryUpload;
             currentStage = retryUpload.uploadMethod === "multipart" ? "fresh-retry-multipart-upload" : "fresh-retry-single-upload";
             try {
-              await uploadSignedFile(file, retryUpload, uploadContext);
+              completedUpload = await uploadSignedFile(file, retryUpload, uploadContext);
               pendingStoragePaths = pendingStoragePaths.filter((path) => path !== upload.storagePath);
               await cleanupUpload(slug, accessCode, uploadContext.guestId, [upload.storagePath]).catch(() => null);
             } catch (retryError) {
@@ -674,6 +680,7 @@ export default function UploadForm({ slug, initialCode = "", locked = false }: {
               name: upload.originalFilename,
               type: upload.mimeType,
               size: upload.sizeBytes,
+              thumbnailStoragePath: upload.thumbnailStoragePath,
             })),
             notification: isLastBatch ? uploadSummary : undefined,
           }),
