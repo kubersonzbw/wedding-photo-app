@@ -74,22 +74,19 @@ export async function createAndStoreImageDerivatives(sourcePath: string, content
   const source = await getObjectBytes(sourcePath);
   const createdPaths: string[] = [];
 
-  await Promise.all([
-    shouldCreateThumbnail
-      ? createJpegVariant(source, THUMBNAIL_WIDTH, THUMBNAIL_QUALITY).then(async (thumbnail) => {
-          const thumbnailPath = thumbnailPathForStoragePath(sourcePath);
-          await putObject(thumbnailPath, thumbnail, "image/jpeg");
-          createdPaths.push(thumbnailPath);
-        })
-      : Promise.resolve(),
-    shouldCreatePreview
-      ? createJpegVariant(source, PREVIEW_WIDTH, PREVIEW_QUALITY).then(async (preview) => {
-          const previewPath = previewPathForStoragePath(sourcePath);
-          await putObject(previewPath, preview, "image/jpeg");
-          createdPaths.push(previewPath);
-        })
-      : Promise.resolve(),
-  ]);
+  if (shouldCreateThumbnail) {
+    const thumbnail = await createJpegVariant(source, THUMBNAIL_WIDTH, THUMBNAIL_QUALITY);
+    const thumbnailPath = thumbnailPathForStoragePath(sourcePath);
+    await putObject(thumbnailPath, thumbnail, "image/jpeg");
+    createdPaths.push(thumbnailPath);
+  }
+
+  if (shouldCreatePreview) {
+    const preview = await createJpegVariant(source, PREVIEW_WIDTH, PREVIEW_QUALITY);
+    const previewPath = previewPathForStoragePath(sourcePath);
+    await putObject(previewPath, preview, "image/jpeg");
+    createdPaths.push(previewPath);
+  }
 
   return createdPaths;
 }

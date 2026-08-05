@@ -25,7 +25,7 @@ create table public.photos (
   original_filename text,
   mime_type text not null,
   size_bytes bigint not null,
-  status text not null default 'approved' check (status in ('pending', 'approved', 'hidden', 'deleted')),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'hidden', 'failed', 'deleted')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -45,8 +45,5 @@ create policy "Admins can manage guests" on public.guests for all to authenticat
 create policy "Admins can manage photos" on public.photos for all to authenticated using (true) with check (true);
 -- Public users do not receive direct SELECT/INSERT/UPDATE/DELETE policies; public flows use trusted server endpoints with the service role key.
 
--- MVP flow: new uploads should appear in the gallery immediately.
-alter table public.photos alter column status set default 'approved';
-
--- Optional backfill for old test uploads that were waiting for approval.
--- update public.photos set status = 'approved' where status = 'pending';
+-- Queue flow: new uploads are approved after image derivatives are processed.
+alter table public.photos alter column status set default 'pending';

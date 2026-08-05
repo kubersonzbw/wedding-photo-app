@@ -3,7 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/server";
 import { previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
 import { removeObjects, signedUrl } from "@/lib/storage/backblaze";
 
-const PHOTO_STATUSES = ["approved", "hidden"] as const;
+const PHOTO_STATUSES = ["pending", "approved", "hidden", "failed"] as const;
 type PhotoStatus = typeof PHOTO_STATUSES[number];
 const ADMIN_ACTIONS = ["approved", "hidden", "deleted"] as const;
 type AdminAction = typeof ADMIN_ACTIONS[number];
@@ -21,12 +21,14 @@ function isAdminAction(value: string): value is AdminAction {
 }
 
 async function adminCounts() {
-  const [all, approved, hidden] = await Promise.all([
+  const [all, pending, approved, hidden, failed] = await Promise.all([
     countPhotos(),
+    countPhotos("pending"),
     countPhotos("approved"),
     countPhotos("hidden"),
+    countPhotos("failed"),
   ]);
-  return { all, approved, hidden };
+  return { all, pending, approved, hidden, failed };
 }
 
 export async function GET(request: Request) {

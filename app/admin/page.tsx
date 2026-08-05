@@ -4,8 +4,8 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import WeddingShell from "@/components/WeddingShell";
 
-type PhotoStatus = "approved" | "hidden";
-type AdminAction = PhotoStatus | "deleted";
+type PhotoStatus = "pending" | "approved" | "hidden" | "failed";
+type AdminAction = "approved" | "hidden" | "deleted";
 type FilterStatus = "all" | PhotoStatus;
 type PhotoCounts = Record<FilterStatus, number>;
 type Photo = {
@@ -27,14 +27,18 @@ type AdminEvent = {
 
 const FILTERS: Array<{ value: FilterStatus; label: string }> = [
   { value: "all", label: "Wszystkie" },
+  { value: "pending", label: "Przetwarzane" },
   { value: "approved", label: "Widoczne" },
   { value: "hidden", label: "Ukryte" },
+  { value: "failed", label: "Błąd" },
 ];
-const EMPTY_COUNTS: PhotoCounts = { all: 0, approved: 0, hidden: 0 };
+const EMPTY_COUNTS: PhotoCounts = { all: 0, pending: 0, approved: 0, hidden: 0, failed: 0 };
 const PAGE_SIZE = 30;
 
 function statusLabel(status: PhotoStatus) {
+  if (status === "pending") return "Przetwarzane";
   if (status === "approved") return "Widoczne";
+  if (status === "failed") return "Błąd";
   return "Ukryte";
 }
 

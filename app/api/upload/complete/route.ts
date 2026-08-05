@@ -1,19 +1,11 @@
-import { getEventBySlug, getGuestById, insertPhotos } from "@/lib/supabase/admin";
+import { inngest } from "@/lib/inngest/client";
+import { UPLOAD_BATCH_COMPLETED_EVENT, type CompletedUploadEventFile, type UploadNotificationPayload } from "@/lib/inngest/events";
+import { getEventBySlug, insertPhotos } from "@/lib/supabase/admin";
 import { verifyGuestCode } from "@/lib/security/hash";
-import { validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
-import { createAndStoreImageDerivatives, isThumbnailSupported, previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
+import { validatePhotoFileInfoList } from "@/lib/photos/validation";
 import { objectExists } from "@/lib/storage/backblaze";
-import { sendUploadNotificationEmail } from "@/lib/notifications/upload-email";
 
-type CompletedUpload = PhotoFileInfo & {
-  photoId: string;
-  storagePath: string;
-};
-type UploadNotificationPayload = {
-  totalCount: number;
-  imageCount: number;
-  videoCount: number;
-};
+type CompletedUpload = CompletedUploadEventFile;
 
 class UploadCompleteError extends Error {
   constructor(message: string, public status = 400) {
@@ -97,22 +89,6 @@ export async function POST(request: Request) {
       if (!(await objectExists(upload.storagePath))) {
         throw new UploadCompleteError("Nie udało się potwierdzić przesłanego zdjęcia.");
       }
-
-      if (isThumbnailSupported(upload.type)) {
-        const thumbnailPath = thumbnailPathForStoragePath(upload.storagePath);
-        const previewPath = previewPathForStoragePath(upload.storagePath);
-        const [hasThumbnail, hasPreview] = await Promise.all([
-          objectExists(thumbnailPath).catch(() => false),
-          objectExists(previewPath).catch(() => false),
-        ]);
-
-        if (!hasThumbnail || !hasPreview) {
-          await createAndStoreImageDerivatives(upload.storagePath, upload.type, {
-            thumbnail: !hasThumbnail,
-            preview: !hasPreview,
-          });
-        }
-      }
     });
 
     const photoRows = uploads.map((upload) => ({
@@ -123,26 +99,27 @@ export async function POST(request: Request) {
       original_filename: upload.name,
       mime_type: upload.type,
       size_bytes: upload.size,
-      status: "approved",
+      status: "pending",
     }));
 
     const inserted = await insertPhotos(photoRows);
-    if (notification) {
-      try {
-        const guest = await getGuestById(event.id, String(guestId));
-        const galleryUrl = `${requestOrigin(request)}/gallery/${encodeURIComponent(String(slug))}?code=${encodeURIComponent(code)}`;
-        await sendUploadNotificationEmail({
-          eventTitle: String(event.title ?? ""),
-          guestName: String(guest?.name ?? "Gość"),
-          totalCount: notification.totalCount,
-          imageCount: notification.imageCount,
-          videoCount: notification.videoCount,
-          galleryUrl,
-        });
-      } catch (notificationError) {
-        console.warn("Nie udało się wysłać powiadomienia o uploadzie.", notificationError);
-      }
-    }
+    const batchId = crypto.randomUUID();
+    const origin = requestOrigin(request);
+    await inngest.send({
+      id: `upload-batch-${batchId}`,
+      name: UPLOAD_BATCH_COMPLETED_EVENT,
+      data: {
+        batchId,
+        eventId: String(event.id),
+        slug: String(slug),
+        guestId: String(guestId),
+        eventTitle: String(event.title ?? ""),
+        galleryUrl: `${origin}/gallery/${encodeURIComponent(String(slug))}?code=${encodeURIComponent(code)}`,
+        uploads,
+        notification,
+      },
+    });
+
     return Response.json({ ok: true, count: inserted.length });
   } catch (error) {
     if (error instanceof UploadCompleteError) return Response.json({ error: error.message }, { status: error.status });
