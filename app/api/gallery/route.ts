@@ -2,7 +2,7 @@ import { approvedPhotos, countApprovedPhotos, getEventBySlug } from "@/lib/supab
 import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { previewPathForStoragePath, thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
-import { signedUrl } from "@/lib/storage/backblaze";
+import { objectExists, signedUrl } from "@/lib/storage/backblaze";
 
 const GALLERY_SIGNED_URL_EXPIRES_IN = 900;
 
@@ -40,7 +40,9 @@ async function toGalleryPhoto(photo: Record<string, unknown>) {
       };
     }
 
-    const thumbnailPath = storedThumbnailPath;
+    const thumbnailPath = storedThumbnailPath && await objectExists(storedThumbnailPath).catch(() => false)
+      ? storedThumbnailPath
+      : undefined;
     const [url, thumbnailUrl] = await Promise.all([
       signedUrl(path, GALLERY_SIGNED_URL_EXPIRES_IN),
       thumbnailPath ? signedUrl(thumbnailPath, GALLERY_SIGNED_URL_EXPIRES_IN) : Promise.resolve(undefined),

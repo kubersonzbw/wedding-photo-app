@@ -8,8 +8,3 @@ set
   preview_path = coalesce(preview_path, 'previews/' || regexp_replace(storage_path, '\.[^./]*$', '') || '.jpg')
 where mime_type like 'image/%'
   and status in ('approved', 'hidden');
-
-update public.photos
-set thumbnail_path = coalesce(thumbnail_path, 'thumbnails/' || regexp_replace(storage_path, '\.[^./]*$', '') || '.jpg')
-where mime_type like 'video/%'
-  and status in ('approved', 'hidden');

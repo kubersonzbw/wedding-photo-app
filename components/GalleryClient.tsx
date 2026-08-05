@@ -16,6 +16,7 @@ type Photo = { id: string; url: string; thumbnailUrl?: string; previewUrl?: stri
 type GalleryPhoto = Photo & { mediaType?: "image" | "video"; mimeType?: string };
 type GalleryLoadResult = { ok: boolean; totalCount: number };
 const NEW_MEMORY_CHECK_INTERVAL = 45000;
+const MEDIA_REFRESH_ATTEMPT_LIMIT = 1;
 
 function photoCountLabel(count: number) {
   if (count === 1) return "1 plik";
@@ -56,9 +57,12 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   const [mediaRefreshing, setMediaRefreshing] = useState(false);
   const [hasRequested, setHasRequested] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [hasUserScrolledGallery, setHasUserScrolledGallery] = useState(false);
   const active = activeIndex === null ? null : photos[activeIndex];
   const initialLoadStarted = useRef(false);
   const mediaRefreshInFlight = useRef(false);
+  const mediaRefreshAttempts = useRef(new Map<number, number>());
+  const loadMoreInFlight = useRef(false);
   const newMemoryCheckInFlight = useRef(false);
   const refreshSurfaceRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -103,6 +107,10 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
         setDraftCode(codeToVerify);
         setHasRequested(true);
         if (!append) setNewMemoriesAvailable(false);
+        if (!append) {
+          mediaRefreshAttempts.current.clear();
+          setHasUserScrolledGallery(false);
+        }
         return { ok: true, totalCount: nextTotalCount };
       }
     } catch {
@@ -134,10 +142,15 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
 
   const refreshMediaUrls = useCallback(async (targetIndex?: number) => {
     if (!verifiedCode || mediaRefreshInFlight.current) return;
+    const requestedIndex = typeof targetIndex === "number" && Number.isFinite(targetIndex) ? Math.max(0, Math.floor(targetIndex)) : null;
+    if (requestedIndex !== null) {
+      const attempts = mediaRefreshAttempts.current.get(requestedIndex) ?? 0;
+      if (attempts >= MEDIA_REFRESH_ATTEMPT_LIMIT) return;
+      mediaRefreshAttempts.current.set(requestedIndex, attempts + 1);
+    }
     mediaRefreshInFlight.current = true;
     setMediaRefreshing(true);
     try {
-      const requestedIndex = typeof targetIndex === "number" && Number.isFinite(targetIndex) ? Math.max(0, Math.floor(targetIndex)) : null;
       const offset = requestedIndex === null ? 0 : Math.floor(requestedIndex / PAGE_SIZE) * PAGE_SIZE;
       const limit = requestedIndex === null ? Math.min(Math.max(photos.length || PAGE_SIZE, PAGE_SIZE), 120) : PAGE_SIZE;
       const res = await fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, guestCode: verifiedCode, limit, offset }) });
@@ -219,8 +232,13 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   }
 
   const loadNextGalleryPage = useCallback(async () => {
-    if (!hasMore || loadingMore || loading || !verifiedCode) return;
-    await load(slug, verifiedCode, true, true);
+    if (!hasMore || loadMoreInFlight.current || loadingMore || loading || !verifiedCode) return;
+    loadMoreInFlight.current = true;
+    try {
+      await load(slug, verifiedCode, true, true);
+    } finally {
+      loadMoreInFlight.current = false;
+    }
   }, [hasMore, load, loading, loadingMore, slug, verifiedCode]);
 
   const openPhoto = useCallback((index: number) => {
@@ -247,14 +265,24 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
     return () => window.clearInterval(timer);
   }, [checkForNewMemories, hasRequested, verifiedCode]);
   useEffect(() => {
+    if (!hasRequested || !verifiedCode || hasUserScrolledGallery) return;
+
+    function markGalleryScrolled() {
+      if (window.scrollY > 24) setHasUserScrolledGallery(true);
+    }
+
+    window.addEventListener("scroll", markGalleryScrolled, { passive: true });
+    return () => window.removeEventListener("scroll", markGalleryScrolled);
+  }, [hasRequested, hasUserScrolledGallery, verifiedCode]);
+  useEffect(() => {
     const marker = loadMoreRef.current;
-    if (!marker || !hasMore || !verifiedCode) return;
+    if (!marker || !hasMore || !verifiedCode || !hasUserScrolledGallery) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) void loadNextGalleryPage();
     }, { rootMargin: "900px 0px" });
     observer.observe(marker);
     return () => observer.disconnect();
-  }, [hasMore, loadNextGalleryPage, verifiedCode]);
+  }, [hasMore, hasUserScrolledGallery, loadNextGalleryPage, verifiedCode]);
   useEffect(() => { if (activeIndex === null) return; function onKeyDown(event: KeyboardEvent) { if (event.key === "Escape") setActiveIndex(null); if (event.key === "ArrowRight") setActiveIndex((c) => c === null ? c : Math.min(c + 1, photos.length - 1)); if (event.key === "ArrowLeft") setActiveIndex((c) => c === null ? c : Math.max(c - 1, 0)); } window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [activeIndex, photos.length]);
 
   return <WeddingShell wide screen>
@@ -278,7 +306,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
         {!loading && error && <ErrorState title={errorTitle} description={errorDescription} onRefresh={invalidCodeError ? undefined : () => load()} />}
         {!loading && !error && mediaRefreshing && <p className="gallery-refresh-note" role="status">Odświeżamy podgląd galerii…</p>}
         {!loading && !error && hasRequested && photos.length > 0 && <GalleryGrid photos={photos} onOpen={openPhoto} onMediaError={refreshMediaUrls} />}
-        {!loading && !error && hasRequested && photos.length > 0 && hasMore && <div className="gallery-infinite-loader" ref={loadMoreRef} role="status" aria-live="polite"><span className="pull-refresh-spinner" />{loadingMore ? "Ładujemy kolejne wspomnienia…" : "Przewiń dalej"}</div>}
+        {!loading && !error && hasRequested && photos.length > 0 && hasMore && <div className="gallery-infinite-loader" ref={loadMoreRef} role="status" aria-live="polite">{loadingMore && <span className="pull-refresh-spinner" />}{loadingMore ? "Ładujemy kolejne wspomnienia…" : "Przewiń dalej"}</div>}
         {!loading && !error && hasRequested && photos.length === 0 && <EmptyGalleryState href={uploadHref} />}
       </div>
     </div>
