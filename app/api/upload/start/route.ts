@@ -3,7 +3,7 @@ import { verifyGuestCode } from "@/lib/security/hash";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { ALLOWED_IMAGE_TYPES, isVideoType, validatePhotoFileInfoList, type PhotoFileInfo } from "@/lib/photos/validation";
 import { thumbnailPathForStoragePath } from "@/lib/photos/thumbnails";
-import { abortMultipartUpload, createMultipartUpload, createSignedMultipartPartUrls, createSignedUploadUrl } from "@/lib/storage/backblaze";
+import { DERIVATIVE_CACHE_CONTROL, abortMultipartUpload, createMultipartUpload, createSignedMultipartPartUrls, createSignedUploadUrl } from "@/lib/storage/backblaze";
 
 const EXTENSION_BY_TYPE: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
         const extension = EXTENSION_BY_TYPE[file.type] ?? "jpg";
         const storagePath = `${event.id}/${guest.id}/${photoId}.${extension}`;
         const signedThumbnail = (isVideoType(file.type) || ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
-          ? await createSignedUploadUrl(thumbnailPathForStoragePath(storagePath), "image/jpeg")
+          ? await createSignedUploadUrl(thumbnailPathForStoragePath(storagePath), "image/jpeg", 600, { cacheControl: DERIVATIVE_CACHE_CONTROL })
           : null;
 
         if (shouldUseMultipartUpload(file)) {
@@ -94,6 +94,7 @@ export async function POST(request: Request) {
             },
             thumbnailStoragePath: signedThumbnail?.path,
             signedThumbnailUrl: signedThumbnail?.signedUrl,
+            thumbnailCacheControl: signedThumbnail ? DERIVATIVE_CACHE_CONTROL : undefined,
             originalFilename: file.name,
             mimeType: file.type,
             sizeBytes: file.size,
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
           signedUrl: signed.signedUrl,
           thumbnailStoragePath: signedThumbnail?.path,
           signedThumbnailUrl: signedThumbnail?.signedUrl,
+          thumbnailCacheControl: signedThumbnail ? DERIVATIVE_CACHE_CONTROL : undefined,
           originalFilename: file.name,
           mimeType: file.type,
           sizeBytes: file.size,

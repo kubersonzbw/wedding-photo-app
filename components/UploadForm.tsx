@@ -19,6 +19,7 @@ type UploadStartResponse = {
     sizeBytes: number;
     thumbnailStoragePath?: string;
     signedThumbnailUrl?: string;
+    thumbnailCacheControl?: string;
     multipart?: {
       uploadId: string;
       partSize: number;
@@ -343,7 +344,10 @@ async function uploadThumbnail(file: File, upload: UploadItem) {
     const thumbnail = isVideoFile(file) ? await createVideoThumbnail(file) : await createImageThumbnail(file);
     const thumbnailRes: Response = await fetchWithRetry(upload.signedThumbnailUrl, {
       method: "PUT",
-      headers: { "Content-Type": "image/jpeg" },
+      headers: {
+        "Content-Type": "image/jpeg",
+        ...(upload.thumbnailCacheControl ? { "Cache-Control": upload.thumbnailCacheControl } : {}),
+      },
       body: thumbnail,
     });
 

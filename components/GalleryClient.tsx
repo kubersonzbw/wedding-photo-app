@@ -127,6 +127,7 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   }, [draftCode, photos.length, slug]);
 
   const checkForNewMemories = useCallback(async () => {
+    if (document.hidden) return;
     if (!verifiedCode || newMemoryCheckInFlight.current || loading || loadingMore || pullRefreshing || noticeRefreshing) return;
     newMemoryCheckInFlight.current = true;
     try {
@@ -261,8 +262,19 @@ export default function GalleryClient({ initialSlug, initialCode = "" }: { initi
   }, [handlePullMove]);
   useEffect(() => {
     if (!hasRequested || !verifiedCode) return;
-    const timer = window.setInterval(() => { void checkForNewMemories(); }, NEW_MEMORY_CHECK_INTERVAL);
-    return () => window.clearInterval(timer);
+    function handleVisibilityChange() {
+      if (!document.hidden) void checkForNewMemories();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void checkForNewMemories();
+    }, NEW_MEMORY_CHECK_INTERVAL);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.clearInterval(timer);
+    };
   }, [checkForNewMemories, hasRequested, verifiedCode]);
   useEffect(() => {
     if (!hasRequested || !verifiedCode || hasUserScrolledGallery) return;

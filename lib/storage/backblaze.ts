@@ -19,6 +19,12 @@ const region = process.env.B2_REGION;
 const accessKeyId = process.env.B2_ACCESS_KEY_ID;
 const secretAccessKey = process.env.B2_SECRET_ACCESS_KEY;
 
+export const DERIVATIVE_CACHE_CONTROL = "private, max-age=86400, immutable";
+
+type PutObjectOptions = {
+  cacheControl?: string;
+};
+
 function assertBackblazeEnv() {
   if (!bucket || !endpoint || !region || !accessKeyId || !secretAccessKey) {
     throw new Error("Missing Backblaze B2 environment variables.");
@@ -41,13 +47,14 @@ function createBackblazeClient() {
   });
 }
 
-export async function createSignedUploadUrl(path: string, contentType: string, expiresIn = 600) {
+export async function createSignedUploadUrl(path: string, contentType: string, expiresIn = 600, options: PutObjectOptions = {}) {
   const env = assertBackblazeEnv();
   const client = createBackblazeClient();
   const command = new PutObjectCommand({
     Bucket: env.bucket,
     Key: path,
     ContentType: contentType,
+    CacheControl: options.cacheControl,
   });
 
   return {
@@ -161,7 +168,7 @@ export async function getObjectBytes(path: string) {
   return Buffer.from(bytes);
 }
 
-export async function putObject(path: string, body: Buffer, contentType: string) {
+export async function putObject(path: string, body: Buffer, contentType: string, options: PutObjectOptions = {}) {
   const env = assertBackblazeEnv();
   const client = createBackblazeClient();
   await client.send(new PutObjectCommand({
@@ -169,6 +176,7 @@ export async function putObject(path: string, body: Buffer, contentType: string)
     Key: path,
     Body: body,
     ContentType: contentType,
+    CacheControl: options.cacheControl,
   }));
 }
 

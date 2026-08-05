@@ -7,6 +7,7 @@ import sharp from "sharp";
 
 const PREVIEW_WIDTH = 1600;
 const PREVIEW_QUALITY = 82;
+const DERIVATIVE_CACHE_CONTROL = "private, max-age=86400, immutable";
 const PAGE_SIZE = 200;
 const DEFAULT_CONCURRENCY = 3;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -150,6 +151,7 @@ async function putObject(client, bucket, key, body) {
     Key: key,
     Body: body,
     ContentType: "image/jpeg",
+    CacheControl: DERIVATIVE_CACHE_CONTROL,
   }));
 }
 

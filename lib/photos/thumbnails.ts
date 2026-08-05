@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/photos/validation";
-import { getObjectBytes, putObject } from "@/lib/storage/backblaze";
+import { DERIVATIVE_CACHE_CONTROL, getObjectBytes, putObject } from "@/lib/storage/backblaze";
 
 const THUMBNAIL_WIDTH = 640;
 const THUMBNAIL_QUALITY = 72;
@@ -51,7 +51,7 @@ export async function createAndStoreImageThumbnail(sourcePath: string, contentTy
 
   const thumbnailPath = thumbnailPathForStoragePath(sourcePath);
   const thumbnail = await createImageThumbnail(sourcePath);
-  await putObject(thumbnailPath, thumbnail, "image/jpeg");
+  await putObject(thumbnailPath, thumbnail, "image/jpeg", { cacheControl: DERIVATIVE_CACHE_CONTROL });
   return thumbnailPath;
 }
 
@@ -60,7 +60,7 @@ export async function createAndStoreImagePreview(sourcePath: string, contentType
 
   const previewPath = previewPathForStoragePath(sourcePath);
   const preview = await createImagePreview(sourcePath);
-  await putObject(previewPath, preview, "image/jpeg");
+  await putObject(previewPath, preview, "image/jpeg", { cacheControl: DERIVATIVE_CACHE_CONTROL });
   return previewPath;
 }
 
@@ -77,14 +77,14 @@ export async function createAndStoreImageDerivatives(sourcePath: string, content
   if (shouldCreateThumbnail) {
     const thumbnail = await createJpegVariant(source, THUMBNAIL_WIDTH, THUMBNAIL_QUALITY);
     const thumbnailPath = thumbnailPathForStoragePath(sourcePath);
-    await putObject(thumbnailPath, thumbnail, "image/jpeg");
+    await putObject(thumbnailPath, thumbnail, "image/jpeg", { cacheControl: DERIVATIVE_CACHE_CONTROL });
     createdPaths.push(thumbnailPath);
   }
 
   if (shouldCreatePreview) {
     const preview = await createJpegVariant(source, PREVIEW_WIDTH, PREVIEW_QUALITY);
     const previewPath = previewPathForStoragePath(sourcePath);
-    await putObject(previewPath, preview, "image/jpeg");
+    await putObject(previewPath, preview, "image/jpeg", { cacheControl: DERIVATIVE_CACHE_CONTROL });
     createdPaths.push(previewPath);
   }
 
